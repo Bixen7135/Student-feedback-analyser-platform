@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -37,6 +38,68 @@ _TASK_ROLE_COLS: dict[str, str] = {
     "sentiment": "sentiment_class",
     "detail_level": "detail_level",
 }
+
+# Reverse: role → standard column name used throughout the pipeline.
+_ROLE_TO_STANDARD: dict[str, str] = {
+    "text": "text_feedback",
+    "sentiment": "sentiment_class",
+    "language": "language",
+    "detail_level": "detail_level",
+}
+
+# Fallback aliases used when version column_roles are missing/incomplete.
+# Kept intentionally conservative to avoid accidental wrong mappings.
+_STANDARD_COL_ALIASES: dict[str, set[str]] = {
+    "text_feedback": {
+        "textfeedback",
+        "text",
+        "feedback",
+        "comment",
+        "review",
+        "response",
+    },
+    "sentiment_class": {
+        "sentimentclass",
+        "sentiment",
+        "\u0442\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u044c\u043a\u043b\u0430\u0441\u0441",
+        "\u043a\u043b\u0430\u0441\u0441\u0442\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u0438",
+    },
+    "language": {
+        "language",
+        "\u044f\u0437\u044b\u043a",
+    },
+    "detail_level": {
+        "detaillevel",
+        "length",
+        "\u0434\u043b\u0438\u043d\u0430",
+    },
+}
+
+
+def _compact_col_name(name: str) -> str:
+    """Normalize a column name for fuzzy alias matching."""
+    return re.sub(r"[\W_]+", "", str(name).strip().lower(), flags=re.UNICODE)
+
+
+def _fallback_standard_renames(df: pd.DataFrame) -> dict[str, str]:
+    """Infer safe renames to canonical pipeline column names by known aliases."""
+    renames: dict[str, str] = {}
+    by_compact: dict[str, list[str]] = {}
+    for col in df.columns:
+        key = _compact_col_name(col)
+        by_compact.setdefault(key, []).append(col)
+
+    for standard, aliases in _STANDARD_COL_ALIASES.items():
+        if standard in df.columns:
+            continue
+        candidates: list[str] = []
+        for alias in aliases:
+            candidates.extend(by_compact.get(alias, []))
+        # Avoid ambiguous remaps if multiple source columns match.
+        unique_candidates = list(dict.fromkeys(candidates))
+        if len(unique_candidates) == 1:
+            renames[unique_candidates[0]] = standard
+    return renames
 
 
 def _utcnow() -> str:
@@ -215,9 +278,9 @@ class DatasetManager:
         )
         self.db.execute(
             """INSERT INTO dataset_branches
-            (id, dataset_id, name, description, base_version_id, author, created_at, is_default, is_deleted)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (branch_id, dataset_id, "main", "", None, author, now, 1, 0),
+            (id, dataset_id, name, description, base_version_id, head_version_id, author, created_at, is_default, is_deleted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (branch_id, dataset_id, "main", "", None, version_id, author, now, 1, 0),
         )
         self.db.execute(
             """INSERT INTO dataset_versions
@@ -367,11 +430,13 @@ class DatasetManager:
     ) -> list[DatasetVersion]:
         """Get all non-deleted versions of a dataset, optionally filtered by branch."""
         if branch_id is not None:
+            branch = self.get_branch(branch_id)
+            head_version_id = branch.head_version_id if branch else None
             rows = self.db.fetchall(
                 """SELECT * FROM dataset_versions
                    WHERE dataset_id = ? AND branch_id = ? AND is_deleted = 0
-                   ORDER BY version DESC""",
-                (dataset_id, branch_id),
+                   ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END, version DESC""",
+                (dataset_id, branch_id, head_version_id or ""),
             )
         else:
             rows = self.db.fetchall(
@@ -398,6 +463,21 @@ class DatasetManager:
         )
         return row["default_branch_id"] if row else None
 
+    def _resolve_head_version(self, branch_id: str) -> DatasetVersion | None:
+        row = self.db.fetchone(
+            """SELECT v.* FROM dataset_branches b
+               JOIN dataset_versions v ON v.id = b.head_version_id
+               WHERE b.id = ? AND v.is_deleted = 0""",
+            (branch_id,),
+        )
+        return self._row_to_version(row) if row else None
+
+    def _set_branch_head_version(self, branch_id: str, version_id: str | None) -> None:
+        self.db.execute(
+            "UPDATE dataset_branches SET head_version_id = ? WHERE id = ?",
+            (version_id, branch_id),
+        )
+
     def _get_or_create_main_branch(self, dataset_id: str, author: str = "") -> DatasetBranch:
         """Return the default branch, creating it if missing (migration helper)."""
         default_id = self._get_default_branch_id(dataset_id)
@@ -421,6 +501,16 @@ class DatasetManager:
                 "UPDATE datasets SET default_branch_id = ? WHERE id = ?",
                 (branch.id, dataset_id),
             )
+            if not branch.head_version_id:
+                head_row = self.db.fetchone(
+                    """SELECT id FROM dataset_versions
+                       WHERE dataset_id = ? AND branch_id = ? AND is_deleted = 0
+                       ORDER BY version DESC LIMIT 1""",
+                    (dataset_id, branch.id),
+                )
+                if head_row:
+                    self._set_branch_head_version(branch.id, head_row["id"])
+                    branch = DatasetBranch(**{**branch.model_dump(), "head_version_id": head_row["id"]})
             self.db.commit()
             return DatasetBranch(**{**branch.model_dump(), "is_default": True})
 
@@ -429,15 +519,24 @@ class DatasetManager:
         branch_id = str(uuid.uuid4())
         self.db.execute(
             """INSERT INTO dataset_branches
-               (id, dataset_id, name, description, base_version_id, author, created_at, is_default, is_deleted)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (branch_id, dataset_id, "main", "", None, author, now, 1, 0),
+               (id, dataset_id, name, description, base_version_id, head_version_id, author, created_at, is_default, is_deleted)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (branch_id, dataset_id, "main", "", None, None, author, now, 1, 0),
         )
         # Assign all unassigned versions to this branch
         self.db.execute(
             "UPDATE dataset_versions SET branch_id = ? WHERE dataset_id = ? AND branch_id IS NULL",
             (branch_id, dataset_id),
         )
+        head_row = self.db.fetchone(
+            """SELECT id FROM dataset_versions
+               WHERE dataset_id = ? AND branch_id = ? AND is_deleted = 0
+               ORDER BY version DESC LIMIT 1""",
+            (dataset_id, branch_id),
+        )
+        head_version_id = head_row["id"] if head_row else None
+        if head_version_id:
+            self._set_branch_head_version(branch_id, head_version_id)
         self.db.execute(
             "UPDATE datasets SET default_branch_id = ? WHERE id = ?",
             (branch_id, dataset_id),
@@ -446,7 +545,7 @@ class DatasetManager:
         return DatasetBranch(
             id=branch_id, dataset_id=dataset_id, name="main", description="",
             base_version_id=None, author=author, created_at=now,
-            is_default=True, is_deleted=False,
+            head_version_id=head_version_id, is_default=True, is_deleted=False,
         )
 
     def list_branches(self, dataset_id: str) -> list[DatasetBranch]:
@@ -534,11 +633,12 @@ class DatasetManager:
         branch_id = str(uuid.uuid4())
         self.db.execute(
             """INSERT INTO dataset_branches
-               (id, dataset_id, name, description, base_version_id, author, created_at, is_default, is_deleted)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (branch_id, dataset_id, name, description, base_version_id, author, now, 0, 0),
+               (id, dataset_id, name, description, base_version_id, head_version_id, author, created_at, is_default, is_deleted)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (branch_id, dataset_id, name, description, base_version_id, None, author, now, 0, 0),
         )
 
+        fork_version_id: str | None = None
         # Create a forked version on the new branch
         if base_row:
             # Get next global version number
@@ -569,6 +669,10 @@ class DatasetManager:
                  base_row["file_size_bytes"], base_row["storage_path"], branch_id,
                  column_roles, 0, 1),  # is_fork = 1
             )
+            self.db.execute(
+                "UPDATE dataset_branches SET head_version_id = ? WHERE id = ?",
+                (fork_version_id, branch_id),
+            )
             log.info("branch_version_forked", branch_id=branch_id, fork_version_id=fork_version_id,
                      from_version=base_version_id)
 
@@ -577,7 +681,7 @@ class DatasetManager:
         return DatasetBranch(
             id=branch_id, dataset_id=dataset_id, name=name, description=description,
             base_version_id=base_version_id, author=author, created_at=now,
-            is_default=False, is_deleted=False,
+            head_version_id=fork_version_id, is_default=False, is_deleted=False,
         )
 
     def update_branch(
@@ -723,15 +827,61 @@ class DatasetManager:
         if version.branch_id == target_branch_id:
             return version
 
-        # If this is a forked version, it cannot be moved (it represents the branch origin)
-        if version.is_fork:
-            raise ValueError("Cannot move forked versions. Delete the branch and create a new one instead.")
+        # Prevent creating an empty branch via move; each active branch must keep at least one version.
+        count_row = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM dataset_versions WHERE branch_id = ? AND is_deleted = 0",
+            (version.branch_id,),
+        )
+        cnt = count_row["cnt"] if count_row else 0
+        if cnt <= 1:
+            raise ValueError(
+                "Cannot move the only version on a branch. "
+                "Create a new version first, or delete the branch."
+            )
 
         # Update the version's branch
         self.db.execute(
             "UPDATE dataset_versions SET branch_id = ? WHERE id = ?",
             (target_branch_id, version_id),
         )
+
+        # If we moved the source head away, re-point source head to its latest remaining version.
+        source_branch = self.get_branch(version.branch_id) if version.branch_id else None
+        if source_branch and source_branch.head_version_id == version_id:
+            new_source_head_row = self.db.fetchone(
+                """SELECT id FROM dataset_versions
+                   WHERE branch_id = ? AND is_deleted = 0
+                   ORDER BY version DESC LIMIT 1""",
+                (version.branch_id,),
+            )
+            self._set_branch_head_version(
+                version.branch_id,
+                new_source_head_row["id"] if new_source_head_row else None,
+            )
+
+        # For target branch, preserve manual head unless this move is newer or target has no head.
+        target_head = self.get_branch_head_version(target_branch_id)
+        if target_head is None or version.version >= target_head.version:
+            self._set_branch_head_version(target_branch_id, version_id)
+
+        # Keep dataset current_version in sync with the default branch head after branch moves.
+        default_branch_id = self._get_default_branch_id(dataset_id)
+        if default_branch_id and (
+            version.branch_id == default_branch_id or target_branch_id == default_branch_id
+        ):
+            default_head = self.get_branch_head_version(default_branch_id)
+            if default_head:
+                self.db.execute(
+                    """UPDATE datasets SET current_version = ?, row_count = ?,
+                       file_size_bytes = ?, sha256 = ? WHERE id = ?""",
+                    (
+                        default_head.version,
+                        default_head.row_count,
+                        default_head.file_size_bytes,
+                        default_head.sha256,
+                        dataset_id,
+                    ),
+                )
         self.db.commit()
 
         # Fetch and return the updated version
@@ -741,8 +891,211 @@ class DatasetManager:
                  from_branch=version.branch_id, to_branch=target_branch_id, author=author)
         return updated
 
+    def copy_version(
+        self,
+        dataset_id: str,
+        version_id: str,
+        new_reason: str,
+        author: str = "",
+        branch_id: str | None = None,
+    ) -> DatasetVersion:
+        """Create a copy of a version with modified metadata.
+
+        The copied version shares the same data file (storage_path) but has:
+        - New UUID and version number
+        - New created_at timestamp
+        - Custom reason (from request)
+        - Optional custom author (from request)
+        - Same sha256, row_count, file_size_bytes
+        - Same column_roles
+        - Marked as is_fork=True
+
+        This is useful for creating labeled snapshots of the same data state.
+        """
+        # Validate source version exists
+        source_version = self.get_version_by_id(version_id)
+        if source_version is None:
+            raise ValueError(f"Version not found: {version_id}")
+        if source_version.dataset_id != dataset_id:
+            raise ValueError(f"Version does not belong to dataset: {dataset_id}")
+
+        # Resolve target branch
+        if branch_id is None:
+            branch = self._get_or_create_main_branch(dataset_id, author)
+            branch_id = branch.id
+        else:
+            branch = self.get_branch(branch_id)
+            if branch is None or branch.is_deleted:
+                raise ValueError(f"Branch not found: {branch_id}")
+
+        # Get next global version number
+        max_ver_row = self.db.fetchone(
+            "SELECT MAX(version) as max_ver FROM dataset_versions WHERE dataset_id = ?",
+            (dataset_id,),
+        )
+        new_ver = (max_ver_row["max_ver"] or 0) + 1
+
+        # Create copy with new metadata
+        now = _utcnow()
+        copy_version_id = str(uuid.uuid4())
+
+        self.db.execute(
+            """INSERT INTO dataset_versions
+            (id, dataset_id, version, created_at, author, reason, sha256,
+             row_count, file_size_bytes, storage_path, branch_id, column_roles, is_deleted, is_fork)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (copy_version_id, dataset_id, new_ver, now, author, new_reason,
+             source_version.sha256, source_version.row_count,
+             source_version.file_size_bytes, source_version.storage_path,
+             branch_id, orjson.dumps(source_version.column_roles).decode(), 0, 1),
+        )
+        self.db.commit()
+
+        log.info("version_copied", dataset_id=dataset_id, version=new_ver,
+                 source_version_id=version_id, branch_id=branch_id, author=author)
+
+        # Fetch and return the copied version
+        copied = self.get_version_by_id(copy_version_id)
+        assert copied is not None
+        return copied
+
+    def restore_version(
+        self,
+        dataset_id: str,
+        version_id: str,
+        reason: str = "",
+        author: str = "",
+    ) -> DatasetVersion:
+        """Restore a historical version by creating a new head on the same branch.
+
+        The restored version keeps the same underlying data (storage_path/hash),
+        but is recorded as a fresh immutable version entry with a new version number.
+        """
+        src_row = self.db.fetchone(
+            "SELECT * FROM dataset_versions WHERE id = ? AND dataset_id = ? AND is_deleted = 0",
+            (version_id, dataset_id),
+        )
+        if src_row is None:
+            raise ValueError(f"Version not found: {version_id}")
+        source = self._row_to_version(src_row)
+
+        if source.branch_id is None:
+            raise ValueError("Source version is not associated with a branch")
+        branch = self.get_branch(source.branch_id)
+        if branch is None or branch.dataset_id != dataset_id or branch.is_deleted:
+            raise ValueError(f"Branch not found: {source.branch_id}")
+
+        max_ver_row = self.db.fetchone(
+            "SELECT MAX(version) as max_ver FROM dataset_versions WHERE dataset_id = ?",
+            (dataset_id,),
+        )
+        new_ver = (max_ver_row["max_ver"] or 0) + 1
+        now = _utcnow()
+        restored_id = str(uuid.uuid4())
+        restored_reason = reason.strip() or f"Restored from v{source.version}"
+
+        self.db.execute(
+            """INSERT INTO dataset_versions
+            (id, dataset_id, version, created_at, author, reason, sha256,
+             row_count, file_size_bytes, storage_path, branch_id, column_roles, is_deleted, is_fork)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                restored_id,
+                dataset_id,
+                new_ver,
+                now,
+                author,
+                restored_reason,
+                source.sha256,
+                source.row_count,
+                source.file_size_bytes,
+                source.storage_path,
+                source.branch_id,
+                orjson.dumps(source.column_roles).decode(),
+                0,
+                0,
+            ),
+        )
+
+        # If restoring on default branch, dataset's current pointer should follow.
+        default_branch_id = self._get_default_branch_id(dataset_id)
+        if source.branch_id == default_branch_id:
+            self.db.execute(
+                """UPDATE datasets SET current_version = ?, row_count = ?,
+                   file_size_bytes = ?, sha256 = ? WHERE id = ?""",
+                (new_ver, source.row_count, source.file_size_bytes, source.sha256, dataset_id),
+            )
+
+        self.db.commit()
+        restored = self.get_version_by_id(restored_id)
+        assert restored is not None
+        log.info(
+            "version_restored",
+            dataset_id=dataset_id,
+            source_version_id=version_id,
+            restored_version_id=restored_id,
+            branch_id=source.branch_id,
+            author=author,
+        )
+        return restored
+
+    def set_version_as_default(
+        self,
+        dataset_id: str,
+        version_id: str,
+        author: str = "",
+    ) -> DatasetVersion:
+        """Make an existing version the default dataset version (no new version created)."""
+        src_row = self.db.fetchone(
+            "SELECT * FROM dataset_versions WHERE id = ? AND dataset_id = ? AND is_deleted = 0",
+            (version_id, dataset_id),
+        )
+        if src_row is None:
+            raise ValueError(f"Version not found: {version_id}")
+        source = self._row_to_version(src_row)
+
+        if source.branch_id is None:
+            raise ValueError("Source version is not associated with a branch")
+        branch = self.get_branch(source.branch_id)
+        if branch is None or branch.dataset_id != dataset_id or branch.is_deleted:
+            raise ValueError(f"Branch not found: {source.branch_id}")
+
+        # Switch dataset default branch without touching branch head pointer.
+        self.db.execute(
+            "UPDATE dataset_branches SET is_default = 0 WHERE dataset_id = ?",
+            (dataset_id,),
+        )
+        self.db.execute(
+            "UPDATE dataset_branches SET is_default = 1 WHERE id = ?",
+            (source.branch_id,),
+        )
+        self.db.execute(
+            "UPDATE datasets SET default_branch_id = ? WHERE id = ?",
+            (source.branch_id, dataset_id),
+        )
+
+        csv_path = Path(source.storage_path)
+        try:
+            df = pd.read_csv(csv_path, encoding="utf-8", dtype=str)
+            schema_info = _infer_schema(df)
+            schema_json = orjson.dumps([s.model_dump() for s in schema_info]).decode()
+        except Exception:
+            schema_json = "{}"
+        self.db.execute(
+            """UPDATE datasets SET current_version = ?, row_count = ?,
+               file_size_bytes = ?, sha256 = ?, schema_info = ? WHERE id = ?""",
+            (source.version, source.row_count, source.file_size_bytes, source.sha256, schema_json, dataset_id),
+        )
+        self.db.commit()
+        log.info("version_set_as_default", dataset_id=dataset_id, version_id=version_id, branch_id=source.branch_id, author=author)
+        return source
+
     def get_branch_head_version(self, branch_id: str) -> DatasetVersion | None:
-        """Get the latest non-deleted version on a branch."""
+        """Get the selected head version on a branch, with fallback to latest by version."""
+        explicit = self._resolve_head_version(branch_id)
+        if explicit is not None:
+            return explicit
+
         row = self.db.fetchone(
             """SELECT * FROM dataset_versions
                WHERE branch_id = ? AND is_deleted = 0
@@ -814,6 +1167,20 @@ class DatasetManager:
         self.db.execute(
             "UPDATE dataset_versions SET is_deleted = 1 WHERE id = ?", (version_id,)
         )
+
+        # If this was the branch head, promote the next latest version on that branch.
+        branch = self.get_branch(ver.branch_id) if ver.branch_id else None
+        if branch and branch.head_version_id == version_id:
+            new_head_row = self.db.fetchone(
+                """SELECT id FROM dataset_versions
+                   WHERE branch_id = ? AND is_deleted = 0
+                   ORDER BY version DESC LIMIT 1""",
+                (ver.branch_id,),
+            )
+            self._set_branch_head_version(
+                ver.branch_id,
+                new_head_row["id"] if new_head_row else None,
+            )
 
         # If this was head of the default branch, update current_version
         default_branch_id = self._get_default_branch_id(dataset_id)
@@ -1083,6 +1450,7 @@ class DatasetManager:
             (version_id, dataset_id, new_ver, now, author, reason,
              sha, len(df), file_size, str(dest), branch_id, column_roles_json, 0),
         )
+        self._set_branch_head_version(branch_id, version_id)
 
         # Update datasets.current_version only if this is on the default branch
         default_branch_id = self._get_default_branch_id(dataset_id)
@@ -1338,9 +1706,9 @@ class DatasetManager:
         )
         self.db.execute(
             """INSERT INTO dataset_branches
-               (id, dataset_id, name, description, base_version_id, author, created_at, is_default, is_deleted)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (branch_id, dataset_id, "main", "", None, author, now, 1, 0),
+               (id, dataset_id, name, description, base_version_id, head_version_id, author, created_at, is_default, is_deleted)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (branch_id, dataset_id, "main", "", None, version_id, author, now, 1, 0),
         )
         self.db.execute(
             """INSERT INTO dataset_versions
@@ -1381,14 +1749,21 @@ class DatasetManager:
         """Load a dataset version as a DataFrame.
 
         If branch_id is given and version is None, loads the head of that branch.
-        Applies COLUMN_MAP renaming (Russian → English).
+        Applies COLUMN_MAP renaming (Russian → English), then normalises any
+        user-renamed columns back to their standard pipeline names using the
+        stored column_roles for that version.
         """
         ds = self.get_dataset(dataset_id)
         if ds is None:
             raise ValueError(f"Dataset not found: {dataset_id}")
 
+        # Resolve file path and track which version we loaded (for column_roles).
+        actual_version: int | None = None
+        actual_version_id: str | None = None  # UUID; used only for fallback branches
+
         if version is not None:
             file_path = self._get_version_file(dataset_id, version)
+            actual_version = version
         elif branch_id is not None:
             head = self.get_branch_head_version(branch_id)
             if head is None:
@@ -1401,18 +1776,51 @@ class DatasetManager:
                     )
                     if base_row:
                         file_path = Path(base_row["storage_path"])
+                        actual_version_id = base_row["id"]
                     else:
                         raise ValueError(f"Base version not found: {branch.base_version_id}")
                 else:
                     raise ValueError(f"No versions found on branch {branch_id}")
             else:
                 file_path = self._get_version_file(dataset_id, head.version)
+                actual_version = head.version
         else:
             file_path = self._get_version_file(dataset_id, ds.current_version)
+            actual_version = ds.current_version
 
         df = pd.read_csv(file_path, encoding="utf-8", dtype=str)
         df.columns = [c.strip() for c in df.columns]
         df = df.rename(columns=COLUMN_MAP)
+
+        # Second pass: normalise user-renamed columns via column_roles.
+        # e.g. if the user renamed "sentiment_class" → "Класс Тональности",
+        # column_roles stores {"Класс Тональности": "sentiment"} and we rename
+        # it back to the standard name "sentiment_class" expected by the pipeline.
+        col_roles = self.get_column_roles(
+            dataset_id,
+            version_id=actual_version_id,
+            version=actual_version,
+        )
+        role_renames = {
+            col: _ROLE_TO_STANDARD[role]
+            for col, role in col_roles.items()
+            if role in _ROLE_TO_STANDARD
+            and col in df.columns
+            and col != _ROLE_TO_STANDARD[role]
+        }
+        if role_renames:
+            df = df.rename(columns=role_renames)
+
+        # Final safety net for legacy versions where column_roles were not persisted.
+        fallback_renames = _fallback_standard_renames(df)
+        if fallback_renames:
+            df = df.rename(columns=fallback_renames)
+            log.info(
+                "dataset_column_aliases_normalized",
+                renamed_count=len(fallback_renames),
+                targets=sorted(set(fallback_renames.values())),
+            )
+
         return df
 
     def get_csv_path(self, dataset_id: str, version: int | None = None) -> Path:

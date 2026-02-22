@@ -253,6 +253,7 @@ def run_training(
     branch_id: str | None = None,
     seed: int = 42,
     name: str | None = None,
+    base_model_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Train a text classifier on a user dataset and auto-register in ModelRegistry.
@@ -270,6 +271,9 @@ def run_training(
         )
 
     config = config or TrainingConfig()
+    # base_model_id can also come from config
+    if base_model_id is None:
+        base_model_id = config.base_model_id
 
     # 1. Load dataset from storage
     df = dataset_manager.get_dataframe(dataset_id, dataset_version, branch_id=branch_id)
@@ -344,6 +348,47 @@ def run_training(
     train_labels = train_df[label_col].tolist()
     clf.fit(train_texts, train_labels, seed=seed)
 
+    # 6b. Fine-tuning: warm-start from base model when base_model_id is provided
+    warm_started = False
+    base_clf: TextClassifier | None = None
+    if base_model_id is not None:
+        base_model = model_registry.get_model(base_model_id)
+        if base_model is None:
+            raise ValueError(
+                f"Base model not found: {base_model_id}. "
+                "Check the model registry for a valid model_id."
+            )
+        if base_model.task != task:
+            raise ValueError(
+                f"Base model task '{base_model.task}' does not match requested task '{task}'. "
+                "Fine-tuning requires the same task."
+            )
+        if base_model.model_type != model_type:
+            raise ValueError(
+                f"Base model type '{base_model.model_type}' does not match requested model_type '{model_type}'. "
+                "Fine-tuning requires the same model type."
+            )
+        base_model_path = model_registry.load_model_artifact(base_model_id)
+        base_clf_instance = clf.__class__.load(base_model_path)
+        warm_started = clf.warm_start_from(
+            base_clf_instance, train_texts, train_labels, seed=seed
+        )
+        base_clf = base_clf_instance
+        if not warm_started:
+            log.warning(
+                "warm_start_skipped_class_mismatch",
+                base_model_id=base_model_id,
+                base_classes=base_clf_instance.classes_,
+                new_classes=clf.classes_,
+            )
+        else:
+            log.info(
+                "warm_start_applied",
+                base_model_id=base_model_id,
+                task=task,
+                model_type=model_type,
+            )
+
     # 7. Evaluate on val set
     from src.evaluation.classification_metrics import compute_classification_metrics
 
@@ -357,6 +402,35 @@ def run_training(
     train_m = compute_classification_metrics(
         np.array(train_labels), train_preds, classes
     )
+
+    # 7b. Evaluate both base and new model on test set when fine-tuning
+    test_texts = test_df[text_col].fillna("").tolist()
+    test_labels = test_df[label_col].tolist()
+    fine_tuning_info: dict[str, Any] | None = None
+    if base_model_id is not None and base_clf is not None:
+        new_test_preds = clf.predict(test_texts)
+        new_test_m = compute_classification_metrics(
+            np.array(test_labels), new_test_preds, classes
+        )
+        base_test_preds = base_clf.predict(test_texts)
+        base_test_classes = base_clf.classes_
+        base_test_m = compute_classification_metrics(
+            np.array(test_labels), base_test_preds, base_test_classes
+        )
+        fine_tuning_info = {
+            "base_model_id": base_model_id,
+            "warm_started": warm_started,
+            "base_model_test": {
+                "macro_f1": base_test_m.macro_f1,
+                "accuracy": base_test_m.accuracy,
+            },
+            "new_model_test": {
+                "macro_f1": new_test_m.macro_f1,
+                "accuracy": new_test_m.accuracy,
+            },
+            "delta_macro_f1": round(new_test_m.macro_f1 - base_test_m.macro_f1, 4),
+            "delta_accuracy": round(new_test_m.accuracy - base_test_m.accuracy, 4),
+        }
 
     metrics: dict[str, Any] = {
         "task": task,
@@ -380,6 +454,8 @@ def run_training(
         "text_col": text_col,
         "label_col": label_col,
     }
+    if fine_tuning_info is not None:
+        metrics["fine_tuning"] = fine_tuning_info
 
     log.info(
         "training_complete",
@@ -411,6 +487,7 @@ def run_training(
         config=config.to_dict(),
         metrics=metrics,
         run_id=run_id,
+        base_model_id=base_model_id,
     )
 
     return {
@@ -437,6 +514,7 @@ def create_job(
     branch_id: str | None,
     seed: int,
     name: str | None,
+    base_model_id: str | None = None,
 ) -> dict[str, Any]:
     job: dict[str, Any] = {
         "job_id": job_id,
@@ -448,6 +526,7 @@ def create_job(
         "model_type": model_type,
         "seed": seed,
         "name": name,
+        "base_model_id": base_model_id,
         "started_at": None,
         "completed_at": None,
         "error": None,
@@ -485,6 +564,7 @@ def run_job_background(
     branch_id: str | None,
     seed: int,
     name: str | None,
+    base_model_id: str | None = None,
 ) -> None:
     """Execute training synchronously in a background thread."""
     with _jobs_lock:
@@ -504,6 +584,7 @@ def run_job_background(
             branch_id=branch_id,
             seed=seed,
             name=name,
+            base_model_id=base_model_id,
         )
         with _jobs_lock:
             _jobs[job_id]["status"] = "completed"

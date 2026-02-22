@@ -33,12 +33,16 @@ log = get_logger(__name__)
 
 
 def run_full_pipeline(
-    data_path: Path,
-    config_path: Path,
-    factor_structure_path: Path,
-    runs_dir: Path,
+    data_path: Path | None = None,
+    config_path: Path = None,
+    factor_structure_path: Path = None,
+    runs_dir: Path = None,
     seed: int = 42,
     existing_run_id: str | None = None,
+    df_raw: pd.DataFrame | None = None,
+    dataset_id: str | None = None,
+    dataset_version: int | None = None,
+    branch_id: str | None = None,
 ) -> str:
     """
     Execute the full analysis pipeline:
@@ -52,20 +56,33 @@ def run_full_pipeline(
     8. Evaluate all models
     9. Generate reports
 
+    Either ``data_path`` (file on disk) or ``df_raw`` (pre-loaded DataFrame) must
+    be provided.  When ``df_raw`` is given the snapshot_id is derived from its
+    content hash instead of the file hash.
+
     Returns the run_id of the created run.
     """
+    import hashlib
+
+    if df_raw is None and data_path is None:
+        raise ValueError("Either data_path or df_raw must be provided")
+
     set_all_seeds(seed)
     system_info = get_system_info()
     system_info.update(collect_library_versions())
 
     # --- Setup run ---
     from src.utils.reproducibility import hash_file
-    config_hash = hash_file(config_path)[:16] if config_path.exists() else "unknown"
+    config_hash = hash_file(config_path)[:16] if config_path and config_path.exists() else "unknown"
     run_mgr = RunManager(runs_dir)
 
-    log.info("pipeline_start", data_path=str(data_path))
-    df_raw = load_dataset(data_path)
-    snapshot_id = hash_file(data_path)[:16]
+    if df_raw is None:
+        log.info("pipeline_start", data_path=str(data_path))
+        df_raw = load_dataset(data_path)
+        snapshot_id = hash_file(data_path)[:16]
+    else:
+        log.info("pipeline_start", dataset_id=dataset_id, dataset_version=dataset_version)
+        snapshot_id = hashlib.sha256(df_raw.to_csv(index=False).encode()).hexdigest()[:16]
 
     if existing_run_id is not None:
         # Reuse the run already created by the API — do not create a duplicate
@@ -78,6 +95,9 @@ def run_full_pipeline(
             data_snapshot_id=snapshot_id,
             random_seed=seed,
             system_info=system_info,
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            branch_id=branch_id,
         )
         run_dir = run_mgr.get_run_dir(run_id)
         log.info("run_created", run_id=run_id)
@@ -94,7 +114,8 @@ def run_full_pipeline(
     started = datetime.now(timezone.utc).isoformat()
     run_mgr.start_stage(run_id, stage)
     try:
-        snapshot_id = create_snapshot(data_path, run_dir)
+        if data_path is not None:
+            snapshot_id = create_snapshot(data_path, run_dir)
         df = run_preprocessing(df_raw)
         preprocessed_path = save_preprocessed(df, run_dir)
         run_mgr.register_artifact(run_id, "preprocessed_data", preprocessed_path, "data", stage)

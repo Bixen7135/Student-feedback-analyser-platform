@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.sparse import issparse  # type: ignore
 
 from src.utils.logging import get_logger
 from src.utils.reproducibility import set_all_seeds
@@ -10,17 +11,20 @@ log = get_logger(__name__)
 
 
 def shuffle_text_ablation(
-    train_text: np.ndarray,
-    test_text: np.ndarray,
+    train_text: object,
+    test_text: object,
     seed: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[object, object]:
     """
     Shuffle text embeddings within the training set.
     If the fusion model trained on shuffled text performs similarly to the
     one with real text, it suggests text provides no real signal.
     """
     rng = np.random.RandomState(seed)
-    idx = rng.permutation(len(train_text))
+    n_rows = train_text.shape[0] if hasattr(train_text, "shape") else len(train_text)
+    idx = rng.permutation(n_rows)
+    if issparse(train_text):
+        return train_text.tocsr()[idx], test_text
     return train_text[idx], test_text
 
 
@@ -47,10 +51,10 @@ def length_only_ablation(
 
 def run_ablations(
     train_survey: np.ndarray,
-    train_text: np.ndarray,
+    train_text: object,
     train_targets: np.ndarray,
     test_survey: np.ndarray,
-    test_text: np.ndarray,
+    test_text: object,
     test_targets: np.ndarray,
     train_df: "pd.DataFrame",
     test_df: "pd.DataFrame",

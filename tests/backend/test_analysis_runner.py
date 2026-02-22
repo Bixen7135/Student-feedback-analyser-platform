@@ -425,3 +425,101 @@ class TestDbHelpers:
         db = storage["db"]
         deleted = delete_analysis_from_db(db, "no_such_id")
         assert deleted is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: branch_id passthrough (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestBranchIdPassthrough:
+    def test_run_analysis_with_branch_id(self, storage):
+        """branch_id is stored in the summary and DB record."""
+        from src.analysis.runner import run_analysis, get_analysis_from_db
+
+        db = storage["db"]
+        dm = storage["dataset_manager"]
+        mr = storage["model_registry"]
+        tmp = storage["tmp"]
+
+        model_id, dataset_id = _train_model_for_analysis(tmp, dm, mr, task="sentiment")
+
+        # Create a branch to use
+        branch = dm.create_branch(
+            dataset_id=dataset_id,
+            name="phase2-runner-branch",
+            description="branch for runner test",
+        )
+        branch_id = branch.id
+
+        artifacts_dir = tmp / "analysis_runs"
+        analysis_id = "test_branch_runner_001"
+
+        result = run_analysis(
+            dataset_id=dataset_id,
+            model_ids=[model_id],
+            dataset_manager=dm,
+            model_registry=mr,
+            db=db,
+            artifacts_dir=artifacts_dir,
+            analysis_id=analysis_id,
+            branch_id=branch_id,
+            name="Branch Runner Test",
+        )
+
+        assert result["branch_id"] == branch_id
+
+        record = get_analysis_from_db(db, analysis_id)
+        assert record is not None
+        assert record["branch_id"] == branch_id
+
+    def test_create_job_stores_branch_id(self):
+        """create_job includes branch_id in the in-memory job dict."""
+        from src.analysis.runner import create_job, get_job
+
+        job = create_job(
+            job_id="test_job_branch_001",
+            dataset_id="ds_x",
+            model_ids=["m1"],
+            name="",
+            description="",
+            tags=[],
+            dataset_version=None,
+            branch_id="branch_abc",
+        )
+        assert job["branch_id"] == "branch_abc"
+
+        stored = get_job("test_job_branch_001")
+        assert stored is not None
+        assert stored["branch_id"] == "branch_abc"
+
+    def test_branch_id_none_by_default(self, storage):
+        """When branch_id is omitted, it is None in both result and DB."""
+        from src.analysis.runner import run_analysis, get_analysis_from_db
+
+        db = storage["db"]
+        dm = storage["dataset_manager"]
+        mr = storage["model_registry"]
+        tmp = storage["tmp"]
+
+        ds_list, _ = dm.list_datasets()
+        dataset_id = ds_list[0].id
+        model_id, _ = _train_model_for_analysis(tmp, dm, mr, task="sentiment")
+
+        artifacts_dir = tmp / "analysis_runs"
+        analysis_id = "test_no_branch_001"
+
+        result = run_analysis(
+            dataset_id=dataset_id,
+            model_ids=[model_id],
+            dataset_manager=dm,
+            model_registry=mr,
+            db=db,
+            artifacts_dir=artifacts_dir,
+            analysis_id=analysis_id,
+        )
+
+        assert result.get("branch_id") is None
+        record = get_analysis_from_db(db, analysis_id)
+        assert record is not None
+        assert record.get("branch_id") is None

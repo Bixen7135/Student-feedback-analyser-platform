@@ -8,7 +8,7 @@ from pathlib import Path
 import orjson  # type: ignore
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from src.api.dependencies import get_run_manager
+from src.api.dependencies import get_run_manager, get_dataset_manager
 from src.api.schemas import (
     CreateRunRequest,
     RunDetailResponse,
@@ -58,6 +58,10 @@ def _run_to_summary(meta: dict) -> RunSummaryResponse:
         data_snapshot_id=meta.get("data_snapshot_id", ""),
         random_seed=meta.get("random_seed", 42),
         stages=stages,
+        dataset_id=meta.get("dataset_id"),
+        branch_id=meta.get("branch_id"),
+        dataset_version=meta.get("dataset_version"),
+        name=meta.get("name"),
     )
 
 
@@ -84,20 +88,38 @@ async def create_run(
     mgr: RunManager = Depends(get_run_manager),
 ):
     """Create a new run and optionally launch the full pipeline in background."""
+    import hashlib
     from src.config import get_system_info
     from src.utils.reproducibility import hash_file
 
-    data_path   = _resolve_data_path(request.data_path)
     config_path = Path(request.config_path) if request.config_path else _DEFAULT_CONFIG_PATH
+    config_hash = hash_file(config_path)[:16] if config_path.exists() else "unknown"
 
-    config_hash      = hash_file(config_path)[:16] if config_path.exists() else "unknown"
-    data_snapshot_id = hash_file(data_path)[:16]   if data_path.exists()   else "unknown"
+    if request.dataset_id:
+        # Load DF from DatasetManager and derive snapshot_id from content hash
+        dm = get_dataset_manager()
+        try:
+            df = dm.get_dataframe(
+                request.dataset_id,
+                version=request.dataset_version,
+                branch_id=request.branch_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=f"Dataset not found: {exc}")
+        data_snapshot_id = hashlib.sha256(df.to_csv(index=False).encode()).hexdigest()[:16]
+    else:
+        data_path        = _resolve_data_path(request.data_path)
+        data_snapshot_id = hash_file(data_path)[:16] if data_path.exists() else "unknown"
 
     run_id = mgr.create_run(
         config_hash=config_hash,
         data_snapshot_id=data_snapshot_id,
         random_seed=request.seed,
         system_info=get_system_info(),
+        dataset_id=request.dataset_id,
+        dataset_version=request.dataset_version,
+        branch_id=request.branch_id,
+        name=request.name,
     )
     meta = mgr.load_run(run_id)
     return _run_to_summary(meta)
@@ -179,14 +201,39 @@ def _run_full_background(run_id: str, mgr: RunManager) -> None:
         meta = mgr.load_run(run_id)
         seed = meta.get("random_seed", 42)
 
-        data_path   = _resolve_data_path()
         config_path = _DEFAULT_CONFIG_PATH
         factor_path = _DEFAULT_FACTOR_PATH
 
-        run_full_pipeline(
-            data_path, config_path, factor_path, mgr.runs_dir,
-            seed=seed, existing_run_id=run_id,
-        )
+        dataset_id      = meta.get("dataset_id")
+        dataset_version = meta.get("dataset_version")
+        branch_id       = meta.get("branch_id")
+
+        if dataset_id:
+            # Load DF from the versioned dataset store
+            dm = get_dataset_manager()
+            df = dm.get_dataframe(dataset_id, version=dataset_version, branch_id=branch_id)
+            run_full_pipeline(
+                data_path=None,
+                config_path=config_path,
+                factor_structure_path=factor_path,
+                runs_dir=mgr.runs_dir,
+                seed=seed,
+                existing_run_id=run_id,
+                df_raw=df,
+                dataset_id=dataset_id,
+                dataset_version=dataset_version,
+                branch_id=branch_id,
+            )
+        else:
+            data_path = _resolve_data_path()
+            run_full_pipeline(
+                data_path=data_path,
+                config_path=config_path,
+                factor_structure_path=factor_path,
+                runs_dir=mgr.runs_dir,
+                seed=seed,
+                existing_run_id=run_id,
+            )
     except Exception:
         traceback.print_exc()
         # If the pipeline crashed before starting any stage, record the failure

@@ -163,6 +163,7 @@ class BranchResponse(BaseModel):
     name: str
     description: str
     base_version_id: str | None
+    head_version_id: str | None = None
     author: str
     created_at: str
     is_default: bool
@@ -521,6 +522,77 @@ async def move_version_to_branch(
             req.target_branch_id,
             author=req.author,
         )
+        return DatasetVersionResponse(**ver.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class CopyVersionRequest(BaseModel):
+    new_reason: str
+    author: str = ""
+    branch_id: str | None = None
+
+
+@router.post("/{dataset_id}/versions/{version_id}/copy", response_model=DatasetVersionResponse)
+async def copy_version(
+    dataset_id: str,
+    version_id: str,
+    req: CopyVersionRequest,
+    mgr: DatasetManager = Depends(get_dataset_manager),
+):
+    """Create a copy of a version with modified metadata."""
+    try:
+        ver = mgr.copy_version(
+            dataset_id,
+            version_id,
+            req.new_reason,
+            author=req.author,
+            branch_id=req.branch_id,
+        )
+        return DatasetVersionResponse(**ver.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class RestoreVersionRequest(BaseModel):
+    reason: str = ""
+    author: str = ""
+
+
+@router.post("/{dataset_id}/versions/{version_id}/restore", response_model=DatasetVersionResponse)
+async def restore_version(
+    dataset_id: str,
+    version_id: str,
+    req: RestoreVersionRequest,
+    mgr: DatasetManager = Depends(get_dataset_manager),
+):
+    """Restore a historical version as a new latest version on its branch."""
+    try:
+        ver = mgr.restore_version(
+            dataset_id,
+            version_id,
+            reason=req.reason,
+            author=req.author,
+        )
+        return DatasetVersionResponse(**ver.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class SetVersionDefaultRequest(BaseModel):
+    author: str = ""
+
+
+@router.post("/{dataset_id}/versions/{version_id}/set-default", response_model=DatasetVersionResponse)
+async def set_version_as_default(
+    dataset_id: str,
+    version_id: str,
+    req: SetVersionDefaultRequest,
+    mgr: DatasetManager = Depends(get_dataset_manager),
+):
+    """Set a version as dataset default (switch branch if needed and make it current)."""
+    try:
+        ver = mgr.set_version_as_default(dataset_id, version_id, author=req.author)
         return DatasetVersionResponse(**ver.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

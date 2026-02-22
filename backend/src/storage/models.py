@@ -37,6 +37,7 @@ class DatasetBranch(BaseModel):
     name: str
     description: str = ""
     base_version_id: str | None = None
+    head_version_id: str | None = None
     author: str = ""
     created_at: str
     is_default: bool = False
@@ -75,6 +76,7 @@ class ModelMeta(BaseModel):
     status: str = "active"
     storage_path: str = ""
     run_id: str | None = None
+    base_model_id: str | None = None  # set when fine-tuned from an existing model
 
 
 class AnalysisRunMeta(BaseModel):

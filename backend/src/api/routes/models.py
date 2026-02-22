@@ -31,6 +31,12 @@ class ModelResponse(BaseModel):
     status: str
     storage_path: str
     run_id: str | None = None
+    base_model_id: str | None = None
+
+
+class ModelLineageResponse(BaseModel):
+    model_id: str
+    chain: list[ModelResponse]
 
 
 class ModelUpdateRequest(BaseModel):
@@ -128,6 +134,27 @@ async def get_model_versions(
         dataset_id=model.dataset_id,
     )
     return [ModelResponse(**v.model_dump()) for v in versions]
+
+
+@router.get("/{model_id}/lineage", response_model=ModelLineageResponse)
+async def get_model_lineage(
+    model_id: str,
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    """Return the ancestry chain for a fine-tuned model.
+
+    Returns models from current back to root (model with no base_model_id).
+    Useful for understanding the fine-tuning history and comparing metrics
+    across generations.
+    """
+    model = registry.get_model(model_id)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+    chain = registry.get_lineage(model_id)
+    return ModelLineageResponse(
+        model_id=model_id,
+        chain=[ModelResponse(**m.model_dump()) for m in chain],
+    )
 
 
 @router.post("/register", response_model=ModelResponse)

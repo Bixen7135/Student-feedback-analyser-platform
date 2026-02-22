@@ -44,6 +44,7 @@ class ModelRegistry:
         config: dict | None = None,
         metrics: dict | None = None,
         run_id: str | None = None,
+        base_model_id: str | None = None,
     ) -> ModelMeta:
         """Register a trained model in the registry.
 
@@ -89,11 +90,11 @@ class ModelRegistry:
         self.db.execute(
             """INSERT INTO models
             (id, name, task, model_type, version, dataset_id, dataset_version,
-             config, metrics, created_at, status, storage_path, run_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             config, metrics, created_at, status, storage_path, run_id, base_model_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (model_id, name, task, model_type, version, dataset_id, dataset_version,
              orjson.dumps(config).decode(), orjson.dumps(metrics).decode(),
-             now, "active", storage_path, run_id),
+             now, "active", storage_path, run_id, base_model_id),
         )
         self.db.commit()
 
@@ -110,6 +111,7 @@ class ModelRegistry:
             created_at=now,
             storage_path=storage_path,
             run_id=run_id,
+            base_model_id=base_model_id,
         )
         log.info("model_registered", id=model_id, task=task, model_type=model_type, version=version)
         return meta
@@ -268,6 +270,24 @@ class ModelRegistry:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def get_lineage(self, model_id: str) -> list[ModelMeta]:
+        """Return the ancestry chain for a model, from current back to the root.
+
+        E.g. [current_model, parent_model, grandparent_model, ..., root_model].
+        Stops when base_model_id is None or the referenced model is not found.
+        """
+        chain: list[ModelMeta] = []
+        visited: set[str] = set()
+        current_id: str | None = model_id
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            model = self.get_model(current_id)
+            if model is None:
+                break
+            chain.append(model)
+            current_id = model.base_model_id
+        return chain
 
     @staticmethod
     def _row_to_model(row: Any) -> ModelMeta:

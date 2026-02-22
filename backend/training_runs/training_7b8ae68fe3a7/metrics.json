@@ -1,0 +1,58 @@
+{
+  "task": "sentiment",
+  "model_type": "tfidf",
+  "seed": 42,
+  "hyperparameters": {
+    "model_type": "tfidf_logreg",
+    "max_features": 50000,
+    "ngram_range": [
+      1,
+      2
+    ],
+    "sublinear_tf": true,
+    "C": 1.0,
+    "max_iter": 1000,
+    "class_weight": "balanced",
+    "solver": "saga"
+  },
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "train": {
+    "macro_f1": 0.997745099438674,
+    "accuracy": 0.9972259810554803
+  },
+  "val": {
+    "macro_f1": 0.9974753876705962,
+    "accuracy": 0.9967532467532467,
+    "per_class_f1": {
+      "negative": 1.0,
+      "neutral": 0.9953416149068323,
+      "positive": 0.9970845481049563
+    },
+    "confusion_matrix": [
+      [
+        175,
+        0,
+        0
+      ],
+      [
+        0,
+        641,
+        2
+      ],
+      [
+        0,
+        4,
+        1026
+      ]
+    ]
+  },
+  "n_train": 14780,
+  "n_val": 1848,
+  "n_test": 1848,
+  "text_col": "text_feedback",
+  "label_col": "sentiment_class"
+}

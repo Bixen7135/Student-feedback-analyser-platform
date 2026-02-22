@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS dataset_branches (
     name            TEXT NOT NULL,
     description     TEXT NOT NULL DEFAULT '',
     base_version_id TEXT,              -- version_id this branch forked from (NULL for main)
+    head_version_id TEXT,              -- currently selected head version for this branch
     author          TEXT NOT NULL DEFAULT '',
     created_at      TEXT NOT NULL,
     is_default      INTEGER NOT NULL DEFAULT 0,
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS models (
     created_at      TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'active', -- active | archived
     storage_path    TEXT NOT NULL DEFAULT '',
-    run_id          TEXT
+    run_id          TEXT,
+    base_model_id   TEXT                     -- set when fine-tuned from an existing model
 );
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
@@ -161,6 +163,7 @@ class Database:
                 name            TEXT NOT NULL,
                 description     TEXT NOT NULL DEFAULT '',
                 base_version_id TEXT,
+                head_version_id TEXT,
                 author          TEXT NOT NULL DEFAULT '',
                 created_at      TEXT NOT NULL,
                 is_default      INTEGER NOT NULL DEFAULT 0,
@@ -174,6 +177,10 @@ class Database:
         if "default_branch_id" not in existing_ds:
             conn.execute("ALTER TABLE datasets ADD COLUMN default_branch_id TEXT")
 
+        existing_br = {row[1] for row in conn.execute("PRAGMA table_info(dataset_branches)").fetchall()}
+        if "head_version_id" not in existing_br:
+            conn.execute("ALTER TABLE dataset_branches ADD COLUMN head_version_id TEXT")
+
         # Add columns to dataset_versions if missing
         existing_ver = {row[1] for row in conn.execute("PRAGMA table_info(dataset_versions)").fetchall()}
         if "branch_id" not in existing_ver:
@@ -184,6 +191,16 @@ class Database:
             conn.execute("ALTER TABLE dataset_versions ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0")
         if "is_fork" not in existing_ver:
             conn.execute("ALTER TABLE dataset_versions ADD COLUMN is_fork INTEGER NOT NULL DEFAULT 0")
+
+        # Add branch_id to analysis_runs if missing (Phase 2 migration)
+        existing_ar = {row[1] for row in conn.execute("PRAGMA table_info(analysis_runs)").fetchall()}
+        if "branch_id" not in existing_ar:
+            conn.execute("ALTER TABLE analysis_runs ADD COLUMN branch_id TEXT")
+
+        # Add base_model_id to models if missing (Phase 4 migration)
+        existing_m = {row[1] for row in conn.execute("PRAGMA table_info(models)").fetchall()}
+        if "base_model_id" not in existing_m:
+            conn.execute("ALTER TABLE models ADD COLUMN base_model_id TEXT")
 
         # Create indexes that depend on migrated columns (safe to run after columns exist)
         conn.executescript("""

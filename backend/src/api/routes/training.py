@@ -56,6 +56,7 @@ class StartTrainingRequest(BaseModel):
     branch_id: str | None = None
     seed: int = Field(42, ge=0)
     name: str | None = None
+    base_model_id: str | None = None
 
 
 class TrainingJobResponse(BaseModel):
@@ -68,6 +69,7 @@ class TrainingJobResponse(BaseModel):
     model_type: str
     seed: int
     name: str | None
+    base_model_id: str | None = None
     started_at: str | None
     completed_at: str | None
     error: str | None
@@ -132,6 +134,7 @@ async def start_training(
         branch_id=body.branch_id,
         seed=body.seed,
         name=body.name,
+        base_model_id=body.base_model_id,
     )
 
     background_tasks.add_task(
@@ -148,6 +151,7 @@ async def start_training(
         branch_id=body.branch_id,
         seed=body.seed,
         name=body.name,
+        base_model_id=body.base_model_id,
     )
 
     return TrainingJobResponse(**job)

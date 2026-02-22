@@ -31,6 +31,9 @@ class TrainingConfig:
     # None → use TASK_LABEL_COLS[task] (language, sentiment_class, detail_level)
     label_col: str | None = None
 
+    # Fine-tuning: ID of a previously-trained model to warm-start from
+    base_model_id: str | None = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "train_ratio": self.train_ratio,
@@ -42,4 +45,5 @@ class TrainingConfig:
             "max_iter": self.max_iter,
             "text_col": self.text_col,
             "label_col": self.label_col,
+            "base_model_id": self.base_model_id,
         }

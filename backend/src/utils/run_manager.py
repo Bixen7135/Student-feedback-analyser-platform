@@ -47,6 +47,10 @@ class RunManager:
         data_snapshot_id: str,
         random_seed: int,
         system_info: dict[str, Any],
+        dataset_id: str | None = None,
+        dataset_version: int | None = None,
+        branch_id: str | None = None,
+        name: str | None = None,
     ) -> str:
         """Create a new run directory and write initial metadata. Returns run_id."""
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
@@ -68,6 +72,10 @@ class RunManager:
             "random_seed": random_seed,
             "system_info": system_info,
             "stages": {},
+            "dataset_id": dataset_id,
+            "dataset_version": dataset_version,
+            "branch_id": branch_id,
+            "name": name,
         }
         self._write_json(run_dir / "metadata.json", metadata)
         self._write_json(run_dir / "artifact_manifest.json", {

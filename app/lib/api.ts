@@ -21,6 +21,10 @@ export interface RunSummary {
   data_snapshot_id: string;
   random_seed: number;
   stages: Record<string, StageStatus>;
+  dataset_id: string | null;
+  branch_id: string | null;
+  dataset_version: number | null;
+  name: string | null;
 }
 
 export interface RunDetail extends RunSummary {
@@ -111,6 +115,10 @@ export async function fetchRunDetail(runId: string): Promise<RunDetail> {
 export async function createRun(options?: {
   data_path?: string;
   seed?: number;
+  dataset_id?: string | null;
+  branch_id?: string | null;
+  dataset_version?: number | null;
+  name?: string | null;
 }): Promise<RunSummary> {
   return apiFetch<RunSummary>("/runs", {
     method: "POST",
@@ -237,6 +245,7 @@ export interface DatasetBranch {
   name: string;
   description: string;
   base_version_id: string | null;
+  head_version_id: string | null;
   author: string;
   created_at: string;
   is_default: boolean;
@@ -504,6 +513,64 @@ export async function deleteDatasetVersion(
   });
 }
 
+export async function copyDatasetVersion(
+  datasetId: string,
+  versionId: string,
+  newReason: string,
+  author?: string,
+  branchId?: string
+): Promise<DatasetVersion> {
+  const body: { new_reason: string; author?: string; branch_id?: string } = { new_reason: newReason };
+  if (author) body.author = author;
+  if (branchId) body.branch_id = branchId;
+  return apiFetch<DatasetVersion>(`/datasets/${datasetId}/versions/${versionId}/copy`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function moveDatasetVersion(
+  datasetId: string,
+  versionId: string,
+  targetBranchId: string,
+  author?: string
+): Promise<DatasetVersion> {
+  const body: { target_branch_id: string; author?: string } = { target_branch_id: targetBranchId };
+  if (author) body.author = author;
+  return apiFetch<DatasetVersion>(`/datasets/${datasetId}/versions/${versionId}/move`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function restoreDatasetVersion(
+  datasetId: string,
+  versionId: string,
+  reason?: string,
+  author?: string
+): Promise<DatasetVersion> {
+  const body: { reason?: string; author?: string } = {};
+  if (reason) body.reason = reason;
+  if (author) body.author = author;
+  return apiFetch<DatasetVersion>(`/datasets/${datasetId}/versions/${versionId}/restore`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function setDatasetVersionAsDefault(
+  datasetId: string,
+  versionId: string,
+  author?: string
+): Promise<DatasetVersion> {
+  const body: { author?: string } = {};
+  if (author) body.author = author;
+  return apiFetch<DatasetVersion>(`/datasets/${datasetId}/versions/${versionId}/set-default`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Model types
 // ---------------------------------------------------------------------------
@@ -522,6 +589,12 @@ export interface ModelSummary {
   status: string;
   storage_path: string;
   run_id: string | null;
+  base_model_id: string | null;
+}
+
+export interface ModelLineageResponse {
+  model_id: string;
+  chain: ModelSummary[];
 }
 
 export interface ModelListResponse {
@@ -587,6 +660,10 @@ export async function deleteModel(modelId: string): Promise<{ deleted: boolean; 
   });
 }
 
+export async function fetchModelLineage(modelId: string): Promise<ModelLineageResponse> {
+  return apiFetch<ModelLineageResponse>(`/models/${modelId}/lineage`);
+}
+
 // ---------------------------------------------------------------------------
 // Training types
 // ---------------------------------------------------------------------------
@@ -612,6 +689,7 @@ export interface StartTrainingRequest {
   branch_id?: string | null;
   seed?: number;
   name?: string | null;
+  base_model_id?: string | null;
 }
 
 export interface TrainingJob {
@@ -624,6 +702,7 @@ export interface TrainingJob {
   model_type: string;
   seed: number;
   name: string | null;
+  base_model_id: string | null;
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
@@ -702,6 +781,7 @@ export interface AnalysisJob {
   status: "pending" | "running" | "completed" | "failed";
   dataset_id: string;
   dataset_version: number | null;
+  branch_id: string | null;
   model_ids: string[];
   name: string;
   description: string;
@@ -720,6 +800,7 @@ export interface AnalysisRecord {
   comments: string;
   dataset_id: string | null;
   dataset_version: number | null;
+  branch_id: string | null;
   model_ids: string[];
   created_at: string;
   status: "pending" | "running" | "completed" | "failed";
@@ -741,6 +822,7 @@ export interface StartAnalysisRequest {
   description?: string;
   tags?: string[];
   dataset_version?: number | null;
+  branch_id?: string | null;
   text_col?: string | null;
 }
 
@@ -990,5 +1072,61 @@ export async function updateSavedFilter(
 export async function deleteSavedFilter(filterId: string): Promise<{ deleted: boolean }> {
   return apiFetch<{ deleted: boolean }>(`/saved-filters/${filterId}`, {
     method: "DELETE",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Analytics & Visualization types + fetch functions
+// ---------------------------------------------------------------------------
+
+export interface DistributionData {
+  distributions: Record<string, Record<string, number>>;
+}
+
+export interface SegmentGroup {
+  group: string;
+  count: number;
+  mean: number;
+  median: number;
+  std: number;
+}
+
+export interface SegmentStatsData {
+  group_by: string;
+  metric_col: string;
+  groups: SegmentGroup[];
+}
+
+export interface CrossCompareData {
+  analysis_ids: string[];
+  columns: string[];
+  per_analysis: Record<string, Record<string, Record<string, number>>>;
+  disagreement_rates: Record<string, number>;
+}
+
+export async function fetchAnalysisDistributions(
+  analysisId: string,
+  columns: string[]
+): Promise<DistributionData> {
+  const sp = new URLSearchParams({ columns: columns.join(",") });
+  return apiFetch<DistributionData>(`/analyses/${analysisId}/distributions?${sp.toString()}`);
+}
+
+export async function fetchAnalysisSegmentStats(
+  analysisId: string,
+  groupBy: string,
+  metricCol: string
+): Promise<SegmentStatsData> {
+  const sp = new URLSearchParams({ group_by: groupBy, metric_col: metricCol });
+  return apiFetch<SegmentStatsData>(`/analyses/${analysisId}/segment-stats?${sp.toString()}`);
+}
+
+export async function fetchCrossCompare(
+  analysisIds: string[],
+  columns: string[]
+): Promise<CrossCompareData> {
+  return apiFetch<CrossCompareData>("/analyses/cross-compare", {
+    method: "POST",
+    body: JSON.stringify({ analysis_ids: analysisIds, columns }),
   });
 }

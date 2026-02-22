@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import orjson  # type: ignore
 import pandas as pd
 
@@ -29,7 +28,7 @@ def run_fusion(
     text_col: str = "text_processed",
     embedding_max_features: int = 5000,
     huber_epsilon: float = 1.35,
-    huber_max_iter: int = 200,
+    huber_max_iter: int = 500,
 ) -> dict[str, Any]:
     """
     Full fusion pipeline:
@@ -77,13 +76,12 @@ def run_fusion(
 
     # Run ablations
     log.info("fusion_running_ablations")
-    import numpy as np
     ablation_results = run_ablations(
         train_survey=train_survey,
-        train_text=train_text.toarray() if hasattr(train_text, 'toarray') else np.asarray(train_text),
+        train_text=train_text,
         train_targets=train_targets,
         test_survey=test_survey,
-        test_text=test_text.toarray() if hasattr(test_text, 'toarray') else np.asarray(test_text),
+        test_text=test_text,
         test_targets=test_targets,
         train_df=train_df,
         test_df=test_df,

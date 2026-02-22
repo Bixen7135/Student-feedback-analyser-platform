@@ -138,7 +138,15 @@ export default function ModelDetailPage({
   });
 
   return (
-    <div style={{ padding: "32px", maxWidth: "800px" }} className="animate-fade-up">
+    <div
+      style={{
+        padding: "32px",
+        maxWidth: "800px",
+        width: "100%",
+        boxSizing: "border-box",
+      }}
+      className="animate-fade-up"
+    >
       <button
         onClick={() => router.push("/models")}
         style={{
@@ -228,16 +236,19 @@ export default function ModelDetailPage({
         ) : (
           <>
             <div
-              className="flex items-center justify-between"
-              style={{ marginBottom: "8px" }}
+              className="flex items-start justify-between gap-3"
+              style={{ marginBottom: "8px", flexWrap: "wrap" }}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3" style={{ minWidth: 0, flexWrap: "wrap" }}>
                 <h1
                   style={{
                     fontFamily: "var(--font-syne)",
                     fontWeight: 700,
                     fontSize: "20px",
                     color: "var(--text-primary)",
+                    minWidth: 0,
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
                   }}
                 >
                   {model.name}
@@ -269,7 +280,7 @@ export default function ModelDetailPage({
                   {model.model_type}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
                 <button
                   onClick={() => setEditing(true)}
                   style={{ ...btnBase, background: "var(--bg-elevated)", color: "var(--text-secondary)" }}
@@ -284,11 +295,12 @@ export default function ModelDetailPage({
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
                 color: "var(--text-tertiary)",
+                flexWrap: "wrap",
               }}
             >
               <span>v{model.version}</span>
               <span>{new Date(model.created_at).toLocaleString()}</span>
-              {model.run_id && <span>run: {model.run_id}</span>}
+              {model.run_id && <span style={{ overflowWrap: "anywhere" }}>run: {model.run_id}</span>}
             </div>
           </>
         )}
@@ -336,12 +348,13 @@ export default function ModelDetailPage({
           ) : (
             <div className="flex flex-col gap-2">
               {Object.entries(model.metrics).map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between">
+                <div key={key} className="flex items-center justify-between gap-3" style={{ flexWrap: "wrap" }}>
                   <span
                     style={{
                       fontFamily: "var(--font-jetbrains)",
                       fontSize: "11px",
                       color: "var(--text-secondary)",
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {key}
@@ -351,6 +364,8 @@ export default function ModelDetailPage({
                       fontFamily: "var(--font-jetbrains)",
                       fontSize: "11px",
                       color: "var(--text-primary)",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     {typeof value === "number"
@@ -381,6 +396,8 @@ export default function ModelDetailPage({
               color: "var(--text-secondary)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
+              overflowWrap: "anywhere",
+              margin: 0,
             }}
           >
             {JSON.stringify(model.config, null, 2)}

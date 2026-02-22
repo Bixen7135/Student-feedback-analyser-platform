@@ -97,3 +97,59 @@ class CharNgramClassifier(TextClassifier):
             "max_iter": self.max_iter,
             "class_weight": "balanced",
         }
+
+    def warm_start_from(
+        self,
+        base_clf: "CharNgramClassifier",
+        texts: list[str],
+        labels: list[str],
+        seed: int = 42,
+    ) -> bool:
+        """Re-fit the LR step initialised from base_clf's weights.
+
+        Called after fit(). Transforms texts with the already-fitted TF-IDF
+        and re-fits only the LR step, starting from the base model's coef_ /
+        intercept_ (truncated / padded for dimension mismatch).
+
+        Returns True if warm-start was applied (classes matched), False if
+        class sets differ (caller should log a warning and keep fresh fit).
+        """
+        assert self._pipeline is not None, "Call fit() first"
+        if base_clf._pipeline is None:
+            return False
+
+        base_lr = base_clf._pipeline.named_steps["clf"]
+        new_lr = self._pipeline.named_steps["clf"]
+
+        base_classes = set(str(c) for c in base_lr.classes_)
+        new_classes_set = set(str(c) for c in new_lr.classes_)
+        if base_classes != new_classes_set:
+            return False
+
+        base_coef = base_lr.coef_  # shape (n_coef_rows, n_feat_base)
+        n_feat_new = new_lr.coef_.shape[1]
+        n_feat_base = base_coef.shape[1]
+        n_feat_copy = min(n_feat_new, n_feat_base)
+
+        coef_init = np.zeros((base_coef.shape[0], n_feat_new))
+        coef_init[:, :n_feat_copy] = base_coef[:, :n_feat_copy]
+        intercept_init = base_lr.intercept_.copy()
+
+        warm_lr = LogisticRegression(
+            C=self.C,
+            max_iter=self.max_iter,
+            random_state=seed,
+            class_weight="balanced",
+            solver="saga",
+            warm_start=True,
+        )
+        warm_lr.coef_ = coef_init
+        warm_lr.intercept_ = intercept_init
+        warm_lr.classes_ = new_lr.classes_
+
+        tfidf = self._pipeline.named_steps["tfidf"]
+        X = tfidf.transform(texts)
+        warm_lr.fit(X, labels)
+
+        self._pipeline.steps[-1] = ("clf", warm_lr)
+        return True

@@ -1,0 +1,45 @@
+{
+  "run_id": "run_20260222T120958245734_0c18ee59",
+  "created_at": "2026-02-22T12:09:58.253710+00:00",
+  "config_hash": "0c18ee591d2d8696",
+  "data_snapshot_id": "f4d8026ddd627e7d",
+  "git_commit": "77b57ad",
+  "random_seed": 42,
+  "system_info": {
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "numpy_version": "2.4.2",
+    "sklearn_version": "1.8.0",
+    "pandas_version": "3.0.1"
+  },
+  "stages": {
+    "ingest_preprocess": {
+      "name": "ingest_preprocess",
+      "status": "completed",
+      "started_at": "2026-02-22T12:10:01.175691+00:00",
+      "completed_at": "2026-02-22T12:10:02.706895+00:00",
+      "duration_seconds": 1.53,
+      "error": null
+    },
+    "psychometrics": {
+      "name": "psychometrics",
+      "status": "completed",
+      "started_at": "2026-02-22T12:10:02.709404+00:00",
+      "completed_at": "2026-02-22T12:10:03.683382+00:00",
+      "duration_seconds": 0.97,
+      "error": null
+    },
+    "splits": {
+      "name": "splits",
+      "status": "failed",
+      "started_at": null,
+      "completed_at": "2026-02-22T12:10:03.743089+00:00",
+      "duration_seconds": null,
+      "error": "Traceback (most recent call last):\n  File \"C:\\projects\\student-feedback-analyser-platform\\backend\\src\\pipeline.py\", line 144, in run_full_pipeline\n    df_train, df_val, df_test = stratified_split(\n                                ^^^^^^^^^^^^^^^^^\n  File \"C:\\projects\\student-feedback-analyser-platform\\backend\\src\\splits\\splitter.py\", line 30, in stratified_split\n    df = df.dropna(subset=[stratify_col]).reset_index(drop=True)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\projects\\student-feedback-analyser-platform\\backend\\.venv\\Lib\\site-packages\\pandas\\core\\frame.py\", line 7789, in dropna\n    raise KeyError(np.array(subset)[check].tolist())\nKeyError: ['sentiment_class']\n"
+    }
+  },
+  "dataset_id": "ba559537-a06d-473f-bf82-177466b0aa17",
+  "dataset_version": null,
+  "branch_id": null,
+  "name": null
+}

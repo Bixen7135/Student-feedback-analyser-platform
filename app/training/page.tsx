@@ -7,10 +7,12 @@ import {
   fetchDatasetSchema,
   fetchDatasetVersions,
   fetchDatasetBranches,
+  fetchModels,
   startTraining,
   DatasetSummary,
   DatasetVersion,
   DatasetBranch,
+  ModelSummary,
   StartTrainingRequest,
 } from "@/app/lib/api";
 
@@ -86,6 +88,12 @@ export default function TrainingPage() {
   // Column role mapping: { datasetColumnName -> systemRole }
   const [datasetColumns, setDatasetColumns] = useState<string[]>([]);
   const [columnRoles, setColumnRoles] = useState<Record<string, string>>({});
+
+  // Fine-tuning state
+  const [fineTuneEnabled, setFineTuneEnabled] = useState(false);
+  const [baseModelId, setBaseModelId] = useState<string | null>(null);
+  const [availableBaseModels, setAvailableBaseModels] = useState<ModelSummary[]>([]);
+  const [baseModelsLoading, setBaseModelsLoading] = useState(false);
 
   // Launch state
   const [launching, setLaunching] = useState(false);
@@ -165,6 +173,27 @@ export default function TrainingPage() {
       .catch(() => {/* schema fetch is best-effort */});
   }, [selectedDataset]);
 
+  // Fetch models available for fine-tuning (same task + model type)
+  useEffect(() => {
+    if (!fineTuneEnabled) return;
+    setBaseModelsLoading(true);
+    setBaseModelId(null);
+    fetchModels({ task: selectedTask, model_type: selectedModel, per_page: 100 })
+      .then((r) => {
+        setAvailableBaseModels(r.models);
+        setBaseModelsLoading(false);
+      })
+      .catch(() => setBaseModelsLoading(false));
+  }, [fineTuneEnabled, selectedTask, selectedModel]);
+
+  // Reset fine-tune state when toggled off
+  useEffect(() => {
+    if (!fineTuneEnabled) {
+      setBaseModelId(null);
+      setAvailableBaseModels([]);
+    }
+  }, [fineTuneEnabled]);
+
   const testRatio = Math.max(0.02, parseFloat((1 - trainRatio - valRatio).toFixed(3)));
 
   async function handleLaunch() {
@@ -180,6 +209,7 @@ export default function TrainingPage() {
         model_type: selectedModel,
         seed,
         name: trainName.trim() || undefined,
+        base_model_id: fineTuneEnabled ? baseModelId : undefined,
         config: {
           train_ratio: trainRatio,
           val_ratio: valRatio,
@@ -343,140 +373,105 @@ export default function TrainingPage() {
       {/* Step 0: Select Dataset */}
       {/* ------------------------------------------------------------------ */}
       {step === 0 && (
-        <div style={card}>
-          <div style={{ marginBottom: "16px" }}>
-            <span style={label}>Dataset</span>
-            {datasetsLoading && (
-              <p style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
-                Loading datasets…
-              </p>
-            )}
-            {datasetsError && (
-              <p style={{ fontSize: "13px", color: "var(--error)" }}>
-                {datasetsError}
-              </p>
-            )}
-            {!datasetsLoading && datasets.length === 0 && (
-              <p style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
-                No datasets uploaded yet.{" "}
-                <a
-                  href="/datasets/upload"
-                  style={{ color: "var(--gold)", textDecoration: "none" }}
+        <div className="space-y-5">
+          <div
+            className="rounded-xl"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-dim)",
+              padding: "24px",
+            }}
+          >
+            <div style={{ marginBottom: "20px" }}>
+              <label style={label}>Dataset</label>
+              {datasetsLoading ? (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-jetbrains)",
+                  }}
                 >
-                  Upload one first.
-                </a>
-              </p>
+                  Loading datasets...
+                </div>
+              ) : datasetsError ? (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--error)",
+                    fontFamily: "var(--font-jetbrains)",
+                  }}
+                >
+                  {datasetsError}
+                </div>
+              ) : datasets.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
+                  No datasets uploaded yet.{" "}
+                  <a
+                    href="/datasets/upload"
+                    style={{ color: "var(--gold)", textDecoration: "none" }}
+                  >
+                    Upload one first.
+                  </a>
+                </p>
+              ) : (
+                <select
+                  style={selectStyle}
+                  value={selectedDataset?.id ?? ""}
+                  onChange={(e) => {
+                    const ds = datasets.find((d) => d.id === e.target.value) ?? null;
+                    setSelectedDataset(ds);
+                  }}
+                >
+                  <option value="">- select a dataset -</option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.row_count.toLocaleString()} rows, v{d.current_version})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {selectedDataset && dsBranches.length > 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <label style={label}>Branch</label>
+                <select
+                  style={selectStyle}
+                  value={selectedBranch ?? ""}
+                  onChange={(e) => setSelectedBranch(e.target.value || null)}
+                >
+                  <option value="">- default branch -</option>
+                  {dsBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                      {b.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-            {!datasetsLoading && datasets.length > 0 && (
-              <select
-                style={selectStyle}
-                value={selectedDataset?.id ?? ""}
-                onChange={(e) => {
-                  const ds = datasets.find((d) => d.id === e.target.value) ?? null;
-                  setSelectedDataset(ds);
-                }}
-              >
-                <option value="">— select a dataset —</option>
-                {datasets.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.row_count.toLocaleString()} rows)
-                  </option>
-                ))}
-              </select>
+
+            {selectedDataset && dsVersions.length > 0 && (
+              <div>
+                <label style={label}>Version</label>
+                <select
+                  style={selectStyle}
+                  value={selectedVersion ?? ""}
+                  onChange={(e) =>
+                    setSelectedVersion(e.target.value ? Number(e.target.value) : null)
+                  }
+                >
+                  <option value="">- latest -</option>
+                  {dsVersions.map((v) => (
+                    <option key={v.id} value={v.version}>
+                      v{v.version} - {v.reason || "no reason"} ({v.row_count.toLocaleString()} rows)
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
-
-          {selectedDataset && (
-            <>
-              <div
-                style={{
-                  background: "var(--bg-base)",
-                  borderRadius: "6px",
-                  padding: "10px 14px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  fontFamily: "var(--font-jetbrains)",
-                  marginBottom: "12px",
-                }}
-              >
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {selectedDataset.name}
-                </strong>
-                {"  "}·{"  "}
-                {selectedDataset.row_count.toLocaleString()} rows{"  "}·{"  "}v
-                {selectedDataset.current_version}
-                {selectedDataset.description && (
-                  <div style={{ marginTop: "4px", color: "var(--text-tertiary)" }}>
-                    {selectedDataset.description}
-                  </div>
-                )}
-              </div>
-
-              {/* Branch picker */}
-              {dsBranches.length > 1 && (
-                <div style={{ marginBottom: "12px" }}>
-                  <span style={label}>Branch</span>
-                  <select
-                    style={selectStyle}
-                    value={selectedBranch ?? "default"}
-                    onChange={(e) =>
-                      setSelectedBranch(
-                        e.target.value === "default" ? null : e.target.value
-                      )
-                    }
-                  >
-                    <option value="default">
-                      {dsBranches.find(b => b.is_default)?.name || "main"} — default branch
-                    </option>
-                    {dsBranches
-                      .filter((b) => !b.is_default)
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name} {b.description ? `— ${b.description}` : ""}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Version picker */}
-              {dsVersions.length > 0 && (
-                <div style={{ marginBottom: "16px" }}>
-                  <span style={label}>Version</span>
-                  {(() => {
-                    // Get versions for the current branch (dsVersions already filtered)
-                    const branchVersions = dsVersions;
-                    const headVersion = branchVersions[0]; // API returns latest first
-                    const currentBranch = dsBranches.find(b => b.id === selectedBranch) || dsBranches.find(b => b.is_default);
-
-                    return (
-                      <select
-                        style={selectStyle}
-                        value={selectedVersion ?? "latest"}
-                        onChange={(e) =>
-                          setSelectedVersion(
-                            e.target.value === "latest" ? null : parseInt(e.target.value)
-                          )
-                        }
-                      >
-                        <option value="latest">
-                          {headVersion
-                            ? `v${headVersion.version} — latest on ${currentBranch?.name || "default"} (${headVersion.row_count.toLocaleString()} rows)`
-                            : "Latest"
-                          }
-                        </option>
-                        {branchVersions.slice(1).map((v) => (
-                          <option key={v.version} value={v.version}>
-                            v{v.version} — {new Date(v.created_at).toLocaleDateString()} ({v.row_count.toLocaleString()} rows){v.reason ? ` · ${v.reason}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    );
-                  })()}
-                </div>
-              )}
-            </>
-          )}
 
           <div className="flex justify-end">
             <button
@@ -484,7 +479,7 @@ export default function TrainingPage() {
               disabled={!selectedDataset}
               onClick={() => setStep(1)}
             >
-              Next →
+              Next {"->"}
             </button>
           </div>
         </div>
@@ -678,6 +673,95 @@ export default function TrainingPage() {
             />
           </div>
 
+          {/* Fine-tuning toggle */}
+          <div
+            style={{
+              marginBottom: "20px",
+              border: `1px solid ${fineTuneEnabled ? "var(--gold)" : "var(--border)"}`,
+              borderRadius: "8px",
+              padding: "14px",
+              background: fineTuneEnabled ? "var(--gold-faint)" : "var(--bg-base)",
+            }}
+          >
+            <label
+              className="flex items-center gap-3"
+              style={{ cursor: "pointer", marginBottom: fineTuneEnabled ? "12px" : 0 }}
+            >
+              <input
+                type="checkbox"
+                checked={fineTuneEnabled}
+                onChange={(e) => setFineTuneEnabled(e.target.checked)}
+                style={{ accentColor: "var(--gold)", width: "16px", height: "16px" }}
+              />
+              <div>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  Fine-tune from existing model
+                </span>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-jetbrains)",
+                  }}
+                >
+                  Warm-start LR weights from a previously trained model of the same task
+                  and type.
+                </div>
+              </div>
+            </label>
+
+            {fineTuneEnabled && (
+              <div>
+                <span style={label}>Base model</span>
+                {baseModelsLoading && (
+                  <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+                    Loading models…
+                  </p>
+                )}
+                {!baseModelsLoading && availableBaseModels.length === 0 && (
+                  <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+                    No compatible models found for task &quot;{selectedTask}&quot; /
+                    type &quot;{selectedModel}&quot;. Train a model first.
+                  </p>
+                )}
+                {!baseModelsLoading && availableBaseModels.length > 0 && (
+                  <select
+                    style={selectStyle}
+                    value={baseModelId ?? ""}
+                    onChange={(e) =>
+                      setBaseModelId(e.target.value || null)
+                    }
+                  >
+                    <option value="">— select base model —</option>
+                    {availableBaseModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · v{m.version} ·{" "}
+                        {new Date(m.created_at).toLocaleDateString()}
+                        {m.metrics &&
+                        typeof (m.metrics as Record<string, unknown>).val === "object"
+                          ? ` · val F1 ${(
+                              (
+                                (m.metrics as Record<string, unknown>).val as Record<
+                                  string,
+                                  number
+                                >
+                              ).macro_f1 ?? 0
+                            ).toFixed(3)}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Column role mapping table */}
           {datasetColumns.length > 0 && (
             <div style={{ marginBottom: "16px" }}>
@@ -866,6 +950,17 @@ export default function TrainingPage() {
               ["Task", TASK_LABELS[selectedTask]],
               ["Model type", MODEL_LABELS[selectedModel]],
               ["Name", trainName || "(auto-generated)"],
+              ...(fineTuneEnabled
+                ? [
+                    [
+                      "Fine-tune from",
+                      baseModelId
+                        ? (availableBaseModels.find((m) => m.id === baseModelId)?.name ??
+                            baseModelId)
+                        : "(none selected — fresh training)",
+                    ],
+                  ]
+                : []),
               ["Text column", textCol || "(auto-detect)"],
               ["Label column", labelCol || "(auto-detect)"],
               [

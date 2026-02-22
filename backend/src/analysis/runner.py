@@ -92,6 +92,7 @@ def run_analysis(
     name: str = "",
     description: str = "",
     tags: list[str] | None = None,
+    branch_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Apply registered models to a dataset and save results.
@@ -102,7 +103,7 @@ def run_analysis(
     tags = tags or []
 
     # 1. Load dataset
-    df = dataset_manager.get_dataframe(dataset_id, dataset_version)
+    df = dataset_manager.get_dataframe(dataset_id, dataset_version, branch_id=branch_id)
     if df is None or len(df) == 0:
         raise ValueError(f"Dataset '{dataset_id}' is empty or not found.")
 
@@ -245,6 +246,7 @@ def run_analysis(
         "analysis_id": analysis_id,
         "dataset_id": dataset_id,
         "dataset_version": dataset_version,
+        "branch_id": branch_id,
         "n_rows": n_rows_total,
         "n_rows_processed": n_rows_total,
         "text_col": text_col,
@@ -267,6 +269,7 @@ def run_analysis(
         model_ids=model_ids,
         status="completed",
         result_summary=summary,
+        branch_id=branch_id,
     )
 
     log.info(
@@ -293,12 +296,13 @@ def _upsert_analysis_run(
     model_ids: list[str],
     status: str,
     result_summary: dict | None = None,
+    branch_id: str | None = None,
 ) -> None:
     db.execute(
         """INSERT OR REPLACE INTO analysis_runs
         (id, name, description, tags, dataset_id, dataset_version, model_ids,
-         created_at, status, run_id, result_summary, comments)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')""",
+         created_at, status, run_id, result_summary, comments, branch_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)""",
         (
             analysis_id,
             name,
@@ -311,6 +315,7 @@ def _upsert_analysis_run(
             status,
             analysis_id,  # run_id = analysis_id (used to find artifacts)
             orjson.dumps(result_summary or {}).decode(),
+            branch_id,
         ),
     )
     db.commit()
@@ -348,12 +353,14 @@ def create_job(
     description: str,
     tags: list[str],
     dataset_version: int | None,
+    branch_id: str | None = None,
 ) -> dict[str, Any]:
     job: dict[str, Any] = {
         "job_id": job_id,
         "status": "pending",
         "dataset_id": dataset_id,
         "dataset_version": dataset_version,
+        "branch_id": branch_id,
         "model_ids": model_ids,
         "name": name,
         "description": description,
@@ -391,6 +398,7 @@ def run_job_background(
     model_registry: ModelRegistry,
     db: Database,
     artifacts_dir: Path,
+    branch_id: str | None = None,
 ) -> None:
     """Execute analysis synchronously in a background thread."""
     with _jobs_lock:
@@ -408,6 +416,7 @@ def run_job_background(
         dataset_version=dataset_version,
         model_ids=model_ids,
         status="running",
+        branch_id=branch_id,
     )
 
     try:
@@ -424,6 +433,7 @@ def run_job_background(
             name=name,
             description=description,
             tags=tags,
+            branch_id=branch_id,
         )
         with _jobs_lock:
             _jobs[job_id]["status"] = "completed"
@@ -720,6 +730,106 @@ def load_results_page(
         "columns": list(df.columns),
         "rows": page_df.values.tolist(),
     }
+
+
+def get_distributions(
+    artifacts_dir: Path,
+    analysis_id: str,
+    columns: list[str],
+) -> dict[str, Any]:
+    """
+    Compute value counts per requested column from the results CSV.
+
+    Returns: { distributions: { col: { value: count } } }
+    """
+    path = get_results_path(artifacts_dir, analysis_id)
+    if not path.exists():
+        return {"distributions": {}}
+
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    distributions: dict[str, dict[str, int]] = {}
+    for col in columns:
+        if col not in df.columns:
+            continue
+        vc = df[col].value_counts()
+        distributions[col] = {str(k): int(v) for k, v in vc.items()}
+
+    return {"distributions": distributions}
+
+
+def get_segment_stats(
+    artifacts_dir: Path,
+    analysis_id: str,
+    group_by: str,
+    metric_col: str,
+) -> dict[str, Any]:
+    """
+    Compute grouped stats (count, mean, median, std) for a numeric metric_col
+    broken down by a categorical group_by column.
+
+    Returns: { group_by, metric_col, groups: [{ group, count, mean, median, std }] }
+    """
+    path = get_results_path(artifacts_dir, analysis_id)
+    if not path.exists():
+        return {"group_by": group_by, "metric_col": metric_col, "groups": []}
+
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    if group_by not in df.columns or metric_col not in df.columns:
+        return {"group_by": group_by, "metric_col": metric_col, "groups": []}
+
+    df = df.copy()
+    df["_metric"] = pd.to_numeric(df[metric_col], errors="coerce")
+    df = df.dropna(subset=["_metric"])
+
+    groups: list[dict[str, Any]] = []
+    for name, grp in df.groupby(group_by, sort=True):
+        metrics = grp["_metric"]
+        groups.append(
+            {
+                "group": str(name),
+                "count": int(len(grp)),
+                "mean": round(float(metrics.mean()), 4),
+                "median": round(float(metrics.median()), 4),
+                "std": round(float(metrics.std()), 4) if len(grp) > 1 else 0.0,
+            }
+        )
+
+    return {"group_by": group_by, "metric_col": metric_col, "groups": groups}
+
+
+def get_cross_compare_disagreements(
+    artifacts_dir: Path,
+    analysis_ids: list[str],
+    columns: list[str],
+) -> dict[str, float]:
+    """
+    Compute per-column disagreement rates across multiple analyses.
+
+    Disagreement rate = fraction of rows where not all analyses agree on that column's value.
+    Rows are aligned by position; only the minimum shared row count is compared.
+    """
+    dfs: list[pd.DataFrame] = []
+    for aid in analysis_ids:
+        path = get_results_path(artifacts_dir, aid)
+        if path.exists():
+            dfs.append(pd.read_csv(path, dtype=str, keep_default_na=False))
+
+    if len(dfs) < 2:
+        return {}
+
+    min_rows = min(len(df) for df in dfs)
+    if min_rows == 0:
+        return {}
+
+    disagreements: dict[str, float] = {}
+    for col in columns:
+        if not all(col in df.columns for df in dfs):
+            continue
+        col_data = [df[col].iloc[:min_rows].tolist() for df in dfs]
+        n_disagree = sum(len(set(row_vals)) > 1 for row_vals in zip(*col_data))
+        disagreements[col] = round(n_disagree / min_rows, 4)
+
+    return disagreements
 
 
 def get_anomalies(

@@ -22,6 +22,10 @@ class RunSummaryResponse(BaseModel):
     data_snapshot_id: str
     random_seed: int
     stages: dict[str, StageStatusResponse]
+    dataset_id: str | None = None
+    branch_id: str | None = None
+    dataset_version: int | None = None
+    name: str | None = None
 
 
 class RunDetailResponse(RunSummaryResponse):
@@ -34,6 +38,10 @@ class CreateRunRequest(BaseModel):
     config_path: str | None = None
     factor_structure_path: str | None = None
     seed: int = 42
+    dataset_id: str | None = None
+    branch_id: str | None = None
+    dataset_version: int | None = None
+    name: str | None = None
 
 
 class StartStageRequest(BaseModel):

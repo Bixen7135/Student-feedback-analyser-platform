@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   fetchDatasets,
+  fetchDatasetBranches,
+  fetchDatasetVersions,
   fetchDatasetSchema,
   fetchModels,
   startAnalysis,
   DatasetSummary,
+  DatasetBranch,
+  DatasetVersion,
   ModelSummary,
 } from "@/app/lib/api";
 
@@ -51,6 +55,10 @@ export default function NewAnalysisPage() {
 
   // Selections
   const [selectedDataset, setSelectedDataset] = useState<DatasetSummary | null>(null);
+  const [dsBranches, setDsBranches] = useState<DatasetBranch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [dsVersions, setDsVersions] = useState<DatasetVersion[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
 
   // Metadata
@@ -69,6 +77,37 @@ export default function NewAnalysisPage() {
   // Launch
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+
+  // Fetch branches when dataset changes
+  useEffect(() => {
+    if (!selectedDataset) {
+      setDsBranches([]);
+      setSelectedBranch(null);
+      return;
+    }
+    fetchDatasetBranches(selectedDataset.id)
+      .then((branches) => {
+        setDsBranches(branches);
+        setSelectedBranch(null);
+      })
+      .catch(() => {});
+  }, [selectedDataset]);
+
+  // Fetch versions when dataset or branch changes
+  useEffect(() => {
+    if (!selectedDataset) {
+      setDsVersions([]);
+      setSelectedVersion(null);
+      return;
+    }
+    const branchToFetch = selectedBranch ?? selectedDataset.default_branch_id ?? undefined;
+    fetchDatasetVersions(selectedDataset.id, branchToFetch)
+      .then((vs) => {
+        setDsVersions(vs);
+        setSelectedVersion(null);
+      })
+      .catch(() => {});
+  }, [selectedDataset, selectedBranch]);
 
   // Fetch dataset schema and auto-populate column roles when dataset changes
   useEffect(() => {
@@ -142,6 +181,8 @@ export default function NewAnalysisPage() {
         name: name.trim() || undefined,
         description: description.trim() || undefined,
         tags: tagList.length > 0 ? tagList : undefined,
+        dataset_version: selectedVersion,
+        branch_id: selectedBranch,
         text_col: textCol || undefined,
       });
       router.push(`/analyses/${job.job_id}`);
@@ -231,48 +272,168 @@ export default function NewAnalysisPage() {
 
       {/* Step 0: Select Dataset */}
       {step === 0 && (
-        <div>
-          <h2 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "16px", color: "var(--text-primary)" }}>
-            Select a Dataset
-          </h2>
-          {datasetsError && (
-            <div style={{ color: "var(--error, #ef4444)", fontSize: "13px", marginBottom: "12px" }}>
-              {datasetsError}
-            </div>
-          )}
-          {datasetsLoading ? (
-            <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>Loading datasets…</div>
-          ) : datasets.length === 0 ? (
-            <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
-              No active datasets. <a href="/datasets/upload" style={{ color: "var(--gold)" }}>Upload one first.</a>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {datasets.map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setSelectedDataset(d)}
+        <div className="space-y-5">
+          <div
+            className="rounded-xl"
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-dim)",
+              padding: "24px",
+            }}
+          >
+            <div style={{ marginBottom: "20px" }}>
+              <label
+                style={{
+                  fontSize: "11px",
+                  color: "var(--text-tertiary)",
+                  fontFamily: "var(--font-syne)",
+                  fontWeight: 700,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  marginBottom: "6px",
+                  display: "block",
+                }}
+              >
+                Dataset
+              </label>
+              {datasetsLoading ? (
+                <div
                   style={{
-                    textAlign: "left",
-                    padding: "14px 16px",
-                    border: `1px solid ${selectedDataset?.id === d.id ? "var(--gold)" : "var(--border-dim)"}`,
-                    borderRadius: "8px",
-                    background: selectedDataset?.id === d.id ? "var(--gold-faint)" : "var(--bg-surface)",
-                    cursor: "pointer",
+                    fontSize: "12px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-jetbrains)",
                   }}
                 >
-                  <div style={{ fontWeight: 500, fontSize: "13px", color: "var(--text-primary)" }}>
-                    {d.name}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "3px" }}>
-                    {d.row_count.toLocaleString()} rows · v{d.current_version}
-                    {d.description && ` · ${d.description.slice(0, 60)}`}
-                  </div>
-                </button>
-              ))}
+                  Loading datasets...
+                </div>
+              ) : datasetsError ? (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--error, #ef4444)",
+                    fontFamily: "var(--font-jetbrains)",
+                  }}
+                >
+                  {datasetsError}
+                </div>
+              ) : datasets.length === 0 ? (
+                <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
+                  No active datasets. <a href="/datasets/upload" style={{ color: "var(--gold)" }}>Upload one first.</a>
+                </div>
+              ) : (
+                <select
+                  value={selectedDataset?.id ?? ""}
+                  onChange={(e) => {
+                    const ds = datasets.find((d) => d.id === e.target.value) ?? null;
+                    setSelectedDataset(ds);
+                  }}
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    fontFamily: "var(--font-jetbrains)",
+                    fontSize: "12px",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                >
+                  <option value="">- select a dataset -</option>
+                  {datasets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.row_count.toLocaleString()} rows, v{d.current_version})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-          )}
-          <div className="flex justify-end" style={{ marginTop: "24px" }}>
+
+            {selectedDataset && dsBranches.length > 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-syne)",
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    marginBottom: "6px",
+                    display: "block",
+                  }}
+                >
+                  Branch
+                </label>
+                <select
+                  value={selectedBranch ?? ""}
+                  onChange={(e) => setSelectedBranch(e.target.value || null)}
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    fontFamily: "var(--font-jetbrains)",
+                    fontSize: "12px",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                >
+                  <option value="">- default branch -</option>
+                  {dsBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                      {b.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedDataset && dsVersions.length > 0 && (
+              <div>
+                <label
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-syne)",
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    marginBottom: "6px",
+                    display: "block",
+                  }}
+                >
+                  Version
+                </label>
+                <select
+                  value={selectedVersion ?? ""}
+                  onChange={(e) => setSelectedVersion(e.target.value ? Number(e.target.value) : null)}
+                  style={{
+                    width: "100%",
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "6px",
+                    padding: "7px 12px",
+                    fontFamily: "var(--font-jetbrains)",
+                    fontSize: "12px",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                >
+                  <option value="">- latest -</option>
+                  {dsVersions.map((v) => (
+                    <option key={v.id} value={v.version}>
+                      v{v.version} - {v.reason || "no reason"} ({v.row_count.toLocaleString()} rows)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end">
             <button
               onClick={() => setStep(1)}
               disabled={!selectedDataset}
@@ -287,12 +448,11 @@ export default function NewAnalysisPage() {
                 cursor: selectedDataset ? "pointer" : "not-allowed",
               }}
             >
-              Next: Select Models →
+              Next: Select Models {"->"}
             </button>
           </div>
         </div>
       )}
-
       {/* Step 1: Select Models */}
       {step === 1 && (
         <div>
@@ -423,6 +583,10 @@ export default function NewAnalysisPage() {
                 {selectedDataset?.name}
                 <span style={{ color: "var(--text-tertiary)", fontWeight: 400, marginLeft: "8px" }}>
                   {selectedDataset?.row_count.toLocaleString()} rows
+                  {selectedBranch && dsBranches.length > 0
+                    ? ` · ${dsBranches.find((b) => b.id === selectedBranch)?.name || selectedBranch}`
+                    : ""}
+                  {selectedVersion ? ` · v${selectedVersion}` : " · (latest)"}
                 </span>
               </div>
             </div>
@@ -623,3 +787,4 @@ export default function NewAnalysisPage() {
     </div>
   );
 }
+

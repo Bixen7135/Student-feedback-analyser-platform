@@ -9,7 +9,7 @@ from typing import Any
 
 import joblib  # type: ignore
 import numpy as np
-from scipy.sparse import issparse  # type: ignore
+from scipy.sparse import csr_matrix, hstack, issparse  # type: ignore
 from sklearn.linear_model import HuberRegressor  # type: ignore
 from sklearn.multioutput import MultiOutputRegressor  # type: ignore
 from sklearn.preprocessing import StandardScaler  # type: ignore
@@ -31,18 +31,19 @@ class FusionResult:
     model_type: str = "huber_regression"
 
 
-def _to_dense(X: Any) -> np.ndarray:
+def _as_feature_matrix(X: Any) -> Any:
+    """Keep sparse matrices sparse; coerce dense features to numpy arrays."""
     if issparse(X):
-        return X.toarray()
+        return X
     return np.asarray(X)
 
 
 def _train_huber_multioutput(
-    X_train: np.ndarray,
+    X_train: Any,
     y_train: np.ndarray,
     seed: int,
     epsilon: float = 1.35,
-    max_iter: int = 200,
+    max_iter: int = 500,
 ) -> MultiOutputRegressor:
     """Train a MultiOutputRegressor wrapping HuberRegressor (one per factor)."""
     base = HuberRegressor(epsilon=epsilon, max_iter=max_iter)
@@ -61,7 +62,7 @@ def train_fusion_models(
     factor_names: list[str],
     seed: int,
     huber_epsilon: float = 1.35,
-    huber_max_iter: int = 200,
+    huber_max_iter: int = 500,
 ) -> FusionResult:
     """
     Train and evaluate three regression models:
@@ -71,8 +72,8 @@ def train_fusion_models(
 
     Targets are standardized on the training set (zero mean, unit variance).
     """
-    train_text_d = _to_dense(train_text)
-    test_text_d = _to_dense(test_text)
+    train_text_m = _as_feature_matrix(train_text)
+    test_text_m = _as_feature_matrix(test_text)
 
     # Standardize targets
     target_scaler = StandardScaler()
@@ -87,14 +88,18 @@ def train_fusion_models(
 
     # Text-only
     log.info("fusion_training_text_only")
-    m_text = _train_huber_multioutput(train_text_d, y_train, seed, huber_epsilon, huber_max_iter)
-    pred_text = target_scaler.inverse_transform(m_text.predict(test_text_d))
+    m_text = _train_huber_multioutput(train_text_m, y_train, seed, huber_epsilon, huber_max_iter)
+    pred_text = target_scaler.inverse_transform(m_text.predict(test_text_m))
     metrics_text = compute_regression_metrics(test_targets, pred_text, factor_names)
 
-    # Late fusion: concatenate
+    # Late fusion: concatenate without forcing dense arrays.
     log.info("fusion_training_late_fusion")
-    X_train_fused = np.hstack([train_survey, train_text_d])
-    X_test_fused = np.hstack([test_survey, test_text_d])
+    if issparse(train_text_m):
+        X_train_fused = hstack([csr_matrix(train_survey), train_text_m], format="csr")
+        X_test_fused = hstack([csr_matrix(test_survey), test_text_m], format="csr")
+    else:
+        X_train_fused = np.hstack([train_survey, train_text_m])
+        X_test_fused = np.hstack([test_survey, test_text_m])
     m_fusion = _train_huber_multioutput(X_train_fused, y_train, seed, huber_epsilon, huber_max_iter)
     pred_fusion = target_scaler.inverse_transform(m_fusion.predict(X_test_fused))
     metrics_fusion = compute_regression_metrics(test_targets, pred_fusion, factor_names)

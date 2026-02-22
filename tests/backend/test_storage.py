@@ -210,7 +210,8 @@ class TestDatasetManager:
         meta = mgr.upload_dataset(sample_csv, name="Test DS")
         df = mgr.get_dataframe(meta.id)
         assert len(df) == 10
-        assert list(df.columns) == ["id", "name", "score", "text"]
+        # "text" column is normalised to "text_feedback" via column_roles
+        assert list(df.columns) == ["id", "name", "score", "text_feedback"]
 
     def test_get_schema(self, mgr, sample_csv):
         meta = mgr.upload_dataset(sample_csv, name="Test DS")

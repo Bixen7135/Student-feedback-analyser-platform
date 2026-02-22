@@ -19,6 +19,10 @@ import {
   setDefaultBranch,
   updateVersionMetadata,
   deleteDatasetVersion,
+  copyDatasetVersion,
+  moveDatasetVersion,
+  restoreDatasetVersion,
+  setDatasetVersionAsDefault,
   CellChange,
   DatasetSummary,
   DatasetPreview,
@@ -207,6 +211,16 @@ export default function DatasetDetailPage({
   const [editVersionReason, setEditVersionReason] = useState("");
   const [confirmDeleteVersionId, setConfirmDeleteVersionId] = useState<string | null>(null);
   const [versionActionSaving, setVersionActionSaving] = useState(false);
+  const [showCopyVersionDialog, setShowCopyVersionDialog] = useState(false);
+  const [copySourceVersionId, setCopySourceVersionId] = useState<string | null>(null);
+  const [copyVersionReason, setCopyVersionReason] = useState("");
+  const [copyVersionAuthor, setCopyVersionAuthor] = useState("");
+  const [copySaving, setCopySaving] = useState(false);
+  const [showMoveVersionDialog, setShowMoveVersionDialog] = useState(false);
+  const [moveSourceVersionId, setMoveSourceVersionId] = useState<string | null>(null);
+  const [moveSourceVersionReason, setMoveSourceVersionReason] = useState("");
+  const [moveTargetBranchId, setMoveTargetBranchId] = useState<string | null>(null);
+  const [moveSaving, setMoveSaving] = useState(false);
 
   const totalPendingChanges =
     pendingEdits.size + pendingDeleteRows.length + pendingNewRows.length + pendingColumnRenames.size;
@@ -571,6 +585,106 @@ export default function DatasetDetailPage({
     }
   }
 
+  async function handleCopyVersion(sourceVersionId: string) {
+    setCopySaving(true);
+    setError(null);
+    try {
+      await copyDatasetVersion(
+        datasetId,
+        sourceVersionId,
+        copyVersionReason || "Copied version",
+        copyVersionAuthor || undefined,
+        activeBranchId ?? undefined
+      );
+      const [updated, newVersions] = await Promise.all([
+        fetchDatasetDetail(datasetId),
+        fetchDatasetVersions(datasetId, activeBranchId ?? undefined),
+      ]);
+      setDs(updated);
+      setVersions(newVersions);
+      setShowCopyVersionDialog(false);
+      setCopySourceVersionId(null);
+      setCopyVersionReason("");
+      setCopyVersionAuthor("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Copy version failed");
+    } finally {
+      setCopySaving(false);
+    }
+  }
+
+  async function handleMoveVersion(sourceVersionId: string) {
+    if (!moveTargetBranchId) {
+      setError("Please select a target branch");
+      return;
+    }
+    setMoveSaving(true);
+    setError(null);
+    try {
+      await moveDatasetVersion(
+        datasetId,
+        sourceVersionId,
+        moveTargetBranchId,
+      );
+      const [updated, newVersions] = await Promise.all([
+        fetchDatasetDetail(datasetId),
+        fetchDatasetVersions(datasetId, activeBranchId ?? undefined),
+      ]);
+      setDs(updated);
+      setVersions(newVersions);
+      setShowMoveVersionDialog(false);
+      setMoveSourceVersionId(null);
+      setMoveSourceVersionReason("");
+      setMoveTargetBranchId(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Move version failed");
+    } finally {
+      setMoveSaving(false);
+    }
+  }
+
+  async function handleRestoreVersion(versionId: string, versionNumber: number) {
+    setVersionActionSaving(true);
+    setError(null);
+    try {
+      await restoreDatasetVersion(datasetId, versionId, `Restored from v${versionNumber}`);
+      const [updated, newVersions] = await Promise.all([
+        fetchDatasetDetail(datasetId),
+        fetchDatasetVersions(datasetId, activeBranchId ?? undefined),
+      ]);
+      setDs(updated);
+      setVersions(newVersions);
+      setPreviewVersion(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Restore version failed");
+    } finally {
+      setVersionActionSaving(false);
+    }
+  }
+
+  async function handleSetVersionAsDefault(versionId: string) {
+    setVersionActionSaving(true);
+    setError(null);
+    try {
+      const ver = await setDatasetVersionAsDefault(datasetId, versionId);
+      const [updated, newVersions] = await Promise.all([
+        fetchDatasetDetail(datasetId),
+        fetchDatasetVersions(datasetId, activeBranchId ?? undefined),
+      ]);
+      setDs(updated);
+      setVersions(newVersions);
+      await loadBranches();
+      if (ver.branch_id) {
+        setActiveBranchId(ver.branch_id);
+      }
+      setPreviewVersion(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Set as default failed");
+    } finally {
+      setVersionActionSaving(false);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -608,6 +722,9 @@ export default function DatasetDetailPage({
     ? versions.filter((v) => v.branch_id === activeBranchId)
     : versions;
   const branchHead = branchVersions[0] ?? null; // versions are DESC
+  const selectedPreviewVersion = previewVersion !== null
+    ? (branchVersions.find((v) => v.version === previewVersion) ?? null)
+    : null;
 
   return (
     <div style={{ padding: "32px", maxWidth: "960px" }} className="animate-fade-up">
@@ -754,9 +871,20 @@ export default function DatasetDetailPage({
               </div>
             )}
             {isReadOnlyVersion && (
-              <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--warning)", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "4px", padding: "2px 8px" }}>
-                Read-only — viewing historical version
-              </span>
+              <div className="flex items-center gap-2">
+                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--warning)", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "4px", padding: "2px 8px" }}>
+                  Read-only — viewing historical version
+                </span>
+                {selectedPreviewVersion && (
+                  <button
+                    onClick={() => handleRestoreVersion(selectedPreviewVersion.id, selectedPreviewVersion.version)}
+                    disabled={versionActionSaving}
+                    style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontSize: "10px", padding: "3px 10px", opacity: versionActionSaving ? 0.6 : 1 }}
+                  >
+                    Restore
+                  </button>
+                )}
+              </div>
             )}
             {!isReadOnlyVersion && (
               <button
@@ -886,7 +1014,11 @@ export default function DatasetDetailPage({
             </div>
           ) : (
             branchVersions.map((v, idx) => {
-              const isHead = idx === 0;
+              const isHead = activeBranch?.head_version_id
+                ? activeBranch.head_version_id === v.id
+                : idx === 0;
+              const isDefaultVersion =
+                v.branch_id === ds.default_branch_id && v.version === ds.current_version;
               const isEditing = editingVersionId === v.id;
               const isConfirmDelete = confirmDeleteVersionId === v.id;
               return (
@@ -897,7 +1029,7 @@ export default function DatasetDetailPage({
                       {isHead && (
                         <span style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>head</span>
                       )}
-                      {v.version === ds.current_version && activeBranch?.is_default && (
+                      {isDefaultVersion && (
                         <span style={{ background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.3)", color: "var(--teal)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>default</span>
                       )}
                       {!isEditing && (
@@ -926,6 +1058,35 @@ export default function DatasetDetailPage({
                           style={{ ...btnBase, background: "transparent", color: "var(--error)", border: "1px solid rgba(239,68,68,0.3)", fontSize: "10px", padding: "3px 10px" }}
                         >
                           Delete
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setCopySourceVersionId(v.id);
+                          setCopyVersionReason(`Copy of ${v.reason}`);
+                          setShowCopyVersionDialog(true);
+                        }}
+                        style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontSize: "10px", padding: "3px 10px" }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMoveSourceVersionId(v.id);
+                          setMoveSourceVersionReason(v.reason);
+                          setShowMoveVersionDialog(true);
+                        }}
+                        style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontSize: "10px", padding: "3px 10px" }}
+                      >
+                        Move
+                      </button>
+                      {!isDefaultVersion && (
+                        <button
+                          onClick={() => handleSetVersionAsDefault(v.id)}
+                          disabled={versionActionSaving}
+                          style={{ ...btnBase, background: "transparent", color: "var(--teal)", border: "1px solid rgba(20,184,166,0.35)", fontSize: "10px", padding: "3px 10px", opacity: versionActionSaving ? 0.6 : 1 }}
+                        >
+                          Set Default
                         </button>
                       )}
                       <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
@@ -1016,7 +1177,9 @@ export default function DatasetDetailPage({
             const isEditingThis = editingBranch?.id === branch.id;
             const isConfirmDeleteThis = confirmDeleteBranch === branch.id;
             const branchVers = versions.filter((v) => v.branch_id === branch.id);
-            const headVer = branchVers[0]; // DESC order
+            const headVer = branch.head_version_id
+              ? (branchVers.find((v) => v.id === branch.head_version_id) ?? branchVers[0])
+              : branchVers[0];
 
             return (
               <div
@@ -1268,6 +1431,97 @@ export default function DatasetDetailPage({
                 </button>
                 <button
                   onClick={() => setEditingBranch(null)}
+                  style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-syne)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== COPY VERSION DIALOG ===== */}
+      {showCopyVersionDialog && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "24px", width: "400px", maxWidth: "90vw" }}>
+            <h2 style={{ fontFamily: "var(--font-syne)", fontWeight: 600, fontSize: "16px", color: "var(--text-primary)", marginBottom: "16px" }}>Copy Version</h2>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "4px", display: "block" }}>Reason / Description</label>
+                <input
+                  value={copyVersionReason}
+                  onChange={(e) => setCopyVersionReason(e.target.value)}
+                  style={{ ...inputStyle, outline: "none" }}
+                  placeholder="Why are you copying this version?"
+                />
+              </div>
+              <div>
+                <label style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "4px", display: "block" }}>Author (optional)</label>
+                <input
+                  value={copyVersionAuthor}
+                  onChange={(e) => setCopyVersionAuthor(e.target.value)}
+                  style={{ ...inputStyle, outline: "none" }}
+                  placeholder="Your name"
+                />
+              </div>
+              <div className="flex items-center gap-2" style={{ marginTop: "4px" }}>
+                <button
+                  onClick={() => copySourceVersionId && handleCopyVersion(copySourceVersionId)}
+                  disabled={copySaving || !copyVersionReason.trim()}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: copySaving || !copyVersionReason.trim() ? "default" : "pointer", opacity: copySaving || !copyVersionReason.trim() ? 0.5 : 1 }}
+                >
+                  {copySaving ? "Copying…" : "Copy Version"}
+                </button>
+                <button
+                  onClick={() => { setShowCopyVersionDialog(false); setCopySourceVersionId(null); setCopyVersionReason(""); setCopyVersionAuthor(""); }}
+                  style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-syne)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== MOVE VERSION DIALOG ===== */}
+      {showMoveVersionDialog && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "24px", width: "400px", maxWidth: "90vw" }}>
+            <h2 style={{ fontFamily: "var(--font-syne)", fontWeight: 600, fontSize: "16px", color: "var(--text-primary)", marginBottom: "16px" }}>Move Version</h2>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "4px", display: "block" }}>Version to move</label>
+                <div style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-secondary)", padding: "8px 12px", background: "var(--bg-base)", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                  {moveSourceVersionReason || "Unknown version"}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "4px", display: "block" }}>Target branch</label>
+                <select
+                  value={moveTargetBranchId ?? ""}
+                  onChange={(e) => setMoveTargetBranchId(e.target.value || null)}
+                  style={{ ...inputStyle, outline: "none" }}
+                >
+                  <option value="" disabled>Select a branch</option>
+                  {branches.filter((b) => !b.is_deleted).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} {b.is_default ? "(default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2" style={{ marginTop: "4px" }}>
+                <button
+                  onClick={() => moveSourceVersionId && handleMoveVersion(moveSourceVersionId)}
+                  disabled={moveSaving || !moveTargetBranchId}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: moveSaving || !moveTargetBranchId ? "default" : "pointer", opacity: moveSaving || !moveTargetBranchId ? 0.5 : 1 }}
+                >
+                  {moveSaving ? "Moving…" : "Move Version"}
+                </button>
+                <button
+                  onClick={() => { setShowMoveVersionDialog(false); setMoveSourceVersionId(null); setMoveSourceVersionReason(""); setMoveTargetBranchId(null); }}
                   style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-syne)" }}
                 >
                   Cancel

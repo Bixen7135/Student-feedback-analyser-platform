@@ -178,6 +178,44 @@ class TestStartAnalysis:
         assert body["name"] == "Named Analysis"
         assert body["tags"] == ["test", "phase4"]
 
+    def test_start_with_branch_id(self, api_client):
+        """branch_id is accepted and echoed back in the response."""
+        # Create a branch to use
+        branch_resp = api_client.post(
+            f"/api/datasets/{api_client.dataset_id}/branches",
+            json={"name": "analysis-test-branch"},
+        )
+        assert branch_resp.status_code == 200, branch_resp.text
+        branch_id = branch_resp.json()["id"]
+        api_client.branch_id = branch_id  # type: ignore[attr-defined]
+
+        resp = api_client.post(
+            "/api/analyses",
+            json={
+                "dataset_id": api_client.dataset_id,
+                "model_ids": [api_client.model_id],
+                "name": "Branch Analysis",
+                "branch_id": branch_id,
+            },
+        )
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["branch_id"] == branch_id
+
+    def test_branch_id_persisted_in_db(self, api_client):
+        """branch_id set at start time is retrievable via GET."""
+        # Use the branch_id created in test_start_with_branch_id
+        branch_id = getattr(api_client, "branch_id", None)
+        if branch_id is None:
+            pytest.skip("branch_id fixture not set (run test_start_with_branch_id first)")
+
+        # Find the analysis with this branch_id
+        resp = api_client.get("/api/analyses?status=completed&per_page=50")
+        assert resp.status_code == 200
+        analyses = resp.json()["analyses"]
+        branch_analyses = [a for a in analyses if a.get("branch_id") == branch_id]
+        assert len(branch_analyses) >= 1, "Expected at least one analysis with branch_id"
+
 
 # ---------------------------------------------------------------------------
 # Tests: List Analyses

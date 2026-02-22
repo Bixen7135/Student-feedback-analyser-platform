@@ -43,6 +43,7 @@ class StartAnalysisRequest(BaseModel):
     description: str = Field("", max_length=2000)
     tags: list[str] = Field(default_factory=list)
     dataset_version: int | None = None
+    branch_id: str | None = None
     text_col: str | None = None
 
 
@@ -51,6 +52,7 @@ class AnalysisJobResponse(BaseModel):
     status: str
     dataset_id: str
     dataset_version: int | None
+    branch_id: str | None = None
     model_ids: list[str]
     name: str
     description: str
@@ -77,6 +79,11 @@ class UpdateAnalysisRequest(BaseModel):
 
 class CompareRequest(BaseModel):
     analysis_ids: list[str] = Field(..., min_length=2, max_length=2)
+
+
+class CrossCompareRequest(BaseModel):
+    analysis_ids: list[str] = Field(..., min_length=2)
+    columns: list[str] = Field(..., min_length=1)
 
 
 class ResultsResponse(BaseModel):
@@ -130,6 +137,7 @@ async def start_analysis(
         description=body.description,
         tags=body.tags,
         dataset_version=body.dataset_version,
+        branch_id=body.branch_id,
     )
 
     background_tasks.add_task(
@@ -146,6 +154,7 @@ async def start_analysis(
         model_registry=model_registry,
         db=db,
         artifacts_dir=_get_artifacts_dir(),
+        branch_id=body.branch_id,
     )
 
     return AnalysisJobResponse(**job)
@@ -204,6 +213,7 @@ async def get_analysis(
             "status": job["status"],
             "dataset_id": job["dataset_id"],
             "dataset_version": job["dataset_version"],
+            "branch_id": job.get("branch_id"),
             "model_ids": job["model_ids"],
             "name": job["name"],
             "description": job["description"],
@@ -227,6 +237,7 @@ async def get_analysis(
                 "status": job["status"],
                 "dataset_id": job["dataset_id"],
                 "dataset_version": job["dataset_version"],
+                "branch_id": job.get("branch_id"),
                 "model_ids": job["model_ids"],
                 "name": job["name"],
                 "description": job["description"],
@@ -314,6 +325,100 @@ async def compare_two_analyses(
     return result
 
 
+@router.post("/cross-compare", response_model=dict)
+async def cross_compare_analyses(
+    body: CrossCompareRequest,
+    db=Depends(get_db),
+):
+    """Compare N analyses: per-column distributions and row-level disagreement rates.
+
+    Body: ``{ analysis_ids: [...], columns: [...] }``
+    Response: per-analysis value count distributions + per-column disagreement rates.
+    """
+    artifacts_dir = _get_artifacts_dir()
+
+    for aid in body.analysis_ids:
+        a = analysis_runner.get_analysis_from_db(db, aid)
+        if a is None:
+            raise HTTPException(status_code=404, detail=f"Analysis not found: {aid}")
+        if a.get("status") != "completed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Analysis {aid} not completed (status={a.get('status')})",
+            )
+
+    per_analysis: dict[str, dict] = {}
+    for aid in body.analysis_ids:
+        dist = analysis_runner.get_distributions(artifacts_dir, aid, body.columns)
+        per_analysis[aid] = dist["distributions"]
+
+    disagreement_rates = analysis_runner.get_cross_compare_disagreements(
+        artifacts_dir=artifacts_dir,
+        analysis_ids=body.analysis_ids,
+        columns=body.columns,
+    )
+
+    return {
+        "analysis_ids": body.analysis_ids,
+        "columns": body.columns,
+        "per_analysis": per_analysis,
+        "disagreement_rates": disagreement_rates,
+    }
+
+
+@router.get("/{analysis_id}/distributions", response_model=dict)
+async def get_distributions(
+    analysis_id: str,
+    columns: str = Query(..., description="Comma-separated column names"),
+    db=Depends(get_db),
+):
+    """Get value count distributions for the requested columns of a completed analysis."""
+    analysis = analysis_runner.get_analysis_from_db(db, analysis_id)
+    if analysis is None:
+        raise HTTPException(
+            status_code=404, detail=f"Analysis not found: {analysis_id}"
+        )
+    if analysis.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analysis not completed. Current status: {analysis.get('status')}",
+        )
+
+    col_list = [c.strip() for c in columns.split(",") if c.strip()]
+    return analysis_runner.get_distributions(
+        artifacts_dir=_get_artifacts_dir(),
+        analysis_id=analysis_id,
+        columns=col_list,
+    )
+
+
+@router.get("/{analysis_id}/segment-stats", response_model=dict)
+async def get_segment_stats(
+    analysis_id: str,
+    group_by: str = Query(..., description="Categorical column to group by"),
+    metric_col: str = Query(..., description="Numeric column to aggregate"),
+    db=Depends(get_db),
+):
+    """Get grouped segment stats (count/mean/median/std) for a numeric column."""
+    analysis = analysis_runner.get_analysis_from_db(db, analysis_id)
+    if analysis is None:
+        raise HTTPException(
+            status_code=404, detail=f"Analysis not found: {analysis_id}"
+        )
+    if analysis.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Analysis not completed. Current status: {analysis.get('status')}",
+        )
+
+    return analysis_runner.get_segment_stats(
+        artifacts_dir=_get_artifacts_dir(),
+        analysis_id=analysis_id,
+        group_by=group_by,
+        metric_col=metric_col,
+    )
+
+
 @router.get("/{analysis_id}/status", response_model=AnalysisJobResponse)
 async def get_analysis_status(
     analysis_id: str,
@@ -335,6 +440,7 @@ async def get_analysis_status(
         status=analysis["status"],
         dataset_id=analysis.get("dataset_id", ""),
         dataset_version=analysis.get("dataset_version"),
+        branch_id=analysis.get("branch_id"),
         model_ids=analysis.get("model_ids", []),
         name=analysis.get("name", ""),
         description=analysis.get("description", ""),
