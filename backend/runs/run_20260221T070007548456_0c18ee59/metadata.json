@@ -1,0 +1,81 @@
+{
+  "run_id": "run_20260221T070007548456_0c18ee59",
+  "created_at": "2026-02-21T07:00:07.556414+00:00",
+  "config_hash": "0c18ee591d2d8696",
+  "data_snapshot_id": "7828d96cb3ec0dfc",
+  "git_commit": "50fb18a",
+  "random_seed": 42,
+  "system_info": {
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "numpy_version": "2.4.2",
+    "sklearn_version": "1.8.0",
+    "pandas_version": "3.0.1"
+  },
+  "stages": {
+    "ingest_preprocess": {
+      "name": "ingest_preprocess",
+      "status": "completed",
+      "started_at": "2026-02-21T07:00:10.285434+00:00",
+      "completed_at": "2026-02-21T07:00:11.937059+00:00",
+      "duration_seconds": 1.65,
+      "error": null
+    },
+    "psychometrics": {
+      "name": "psychometrics",
+      "status": "completed",
+      "started_at": "2026-02-21T07:00:11.948484+00:00",
+      "completed_at": "2026-02-21T07:00:12.814372+00:00",
+      "duration_seconds": 0.86,
+      "error": null
+    },
+    "splits": {
+      "name": "splits",
+      "status": "completed",
+      "started_at": "2026-02-21T07:00:12.831570+00:00",
+      "completed_at": "2026-02-21T07:00:13.148941+00:00",
+      "duration_seconds": 0.32,
+      "error": null
+    },
+    "text_tasks": {
+      "name": "text_tasks",
+      "status": "completed",
+      "started_at": "2026-02-21T07:00:13.166534+00:00",
+      "completed_at": "2026-02-21T07:05:52.604808+00:00",
+      "duration_seconds": 339.44,
+      "error": null
+    },
+    "fusion": {
+      "name": "fusion",
+      "status": "completed",
+      "started_at": "2026-02-21T07:05:52.609185+00:00",
+      "completed_at": "2026-02-21T07:38:56.173913+00:00",
+      "duration_seconds": 1983.56,
+      "error": null
+    },
+    "contradiction": {
+      "name": "contradiction",
+      "status": "completed",
+      "started_at": "2026-02-21T07:38:56.175913+00:00",
+      "completed_at": "2026-02-21T07:38:56.192930+00:00",
+      "duration_seconds": 0.02,
+      "error": null
+    },
+    "evaluation": {
+      "name": "evaluation",
+      "status": "completed",
+      "started_at": "2026-02-21T07:38:56.193914+00:00",
+      "completed_at": "2026-02-21T07:38:58.088091+00:00",
+      "duration_seconds": 1.89,
+      "error": null
+    },
+    "reporting": {
+      "name": "reporting",
+      "status": "completed",
+      "started_at": "2026-02-21T07:38:58.089102+00:00",
+      "completed_at": "2026-02-21T07:38:58.112897+00:00",
+      "duration_seconds": 0.02,
+      "error": null
+    }
+  }
+}

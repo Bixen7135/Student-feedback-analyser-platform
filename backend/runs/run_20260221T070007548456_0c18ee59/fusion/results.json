@@ -1,0 +1,130 @@
+{
+  "factor_names": [
+    "program_quality",
+    "resources_teaching",
+    "digital_assessment"
+  ],
+  "n_train": 14780,
+  "n_test": 1848,
+  "survey_only": {
+    "mae": 0.7258677882995407,
+    "r_squared": -0.029631638726824505,
+    "per_factor_mae": {
+      "program_quality": 0.7302386040760159,
+      "resources_teaching": 0.7231036726416258,
+      "digital_assessment": 0.72426108818098
+    },
+    "per_factor_r2": {
+      "program_quality": -0.03004419038260231,
+      "resources_teaching": -0.029473711185810325,
+      "digital_assessment": -0.02937701461206088
+    },
+    "factor_names": [
+      "program_quality",
+      "resources_teaching",
+      "digital_assessment"
+    ],
+    "n_samples": 1848
+  },
+  "text_only": {
+    "mae": 0.8179226706033936,
+    "r_squared": -0.29582096687529474,
+    "per_factor_mae": {
+      "program_quality": 0.8272655522929719,
+      "resources_teaching": 0.8070554630594144,
+      "digital_assessment": 0.8194469964577945
+    },
+    "per_factor_r2": {
+      "program_quality": -0.3165029198666598,
+      "resources_teaching": -0.2666787142202609,
+      "digital_assessment": -0.3042812665389636
+    },
+    "factor_names": [
+      "program_quality",
+      "resources_teaching",
+      "digital_assessment"
+    ],
+    "n_samples": 1848
+  },
+  "late_fusion": {
+    "mae": 0.7637931526019844,
+    "r_squared": -0.11618151683965434,
+    "per_factor_mae": {
+      "program_quality": 0.7685797214428303,
+      "resources_teaching": 0.7595469064583733,
+      "digital_assessment": 0.7632528299047496
+    },
+    "per_factor_r2": {
+      "program_quality": -0.11598120716983273,
+      "resources_teaching": -0.10866204587566441,
+      "digital_assessment": -0.1239012974734659
+    },
+    "factor_names": [
+      "program_quality",
+      "resources_teaching",
+      "digital_assessment"
+    ],
+    "n_samples": 1848
+  },
+  "delta_mae": {
+    "program_quality": 0.0383,
+    "resources_teaching": 0.0364,
+    "digital_assessment": 0.039
+  },
+  "delta_r2": {
+    "program_quality": -0.0859,
+    "resources_teaching": -0.0792,
+    "digital_assessment": -0.0945
+  },
+  "ablations": {
+    "shuffle_text": {
+      "late_fusion_mae": 0.7541776363593531,
+      "late_fusion_r2": -0.09860840049069626,
+      "per_factor": {
+        "mae": 0.7541776363593531,
+        "r_squared": -0.09860840049069626,
+        "per_factor_mae": {
+          "program_quality": 0.7622884560270032,
+          "resources_teaching": 0.7518299873136557,
+          "digital_assessment": 0.7484144657374004
+        },
+        "per_factor_r2": {
+          "program_quality": -0.10380373682701594,
+          "resources_teaching": -0.10085307294308143,
+          "digital_assessment": -0.09116839170199142
+        },
+        "factor_names": [
+          "program_quality",
+          "resources_teaching",
+          "digital_assessment"
+        ],
+        "n_samples": 1848
+      }
+    },
+    "length_only": {
+      "late_fusion_mae": 0.7258626464138578,
+      "late_fusion_r2": -0.029615108075935703,
+      "per_factor": {
+        "mae": 0.7258626464138578,
+        "r_squared": -0.029615108075935703,
+        "per_factor_mae": {
+          "program_quality": 0.7302366512197414,
+          "resources_teaching": 0.7230890403992459,
+          "digital_assessment": 0.7242622476225861
+        },
+        "per_factor_r2": {
+          "program_quality": -0.030057410820759634,
+          "resources_teaching": -0.02941315123454813,
+          "digital_assessment": -0.029374762172499347
+        },
+        "factor_names": [
+          "program_quality",
+          "resources_teaching",
+          "digital_assessment"
+        ],
+        "n_samples": 1848
+      }
+    }
+  },
+  "note": "Positive delta_mae means fusion is WORSE than survey-only. Negative delta_mae means fusion IMPROVES over survey-only. Null results reported without spin."
+}

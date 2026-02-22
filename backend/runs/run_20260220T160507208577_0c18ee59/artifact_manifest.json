@@ -1,0 +1,24 @@
+{
+  "run_id": "run_20260220T160507208577_0c18ee59",
+  "created_at": "2026-02-20T16:05:07.241863+00:00",
+  "artifacts": [
+    {
+      "name": "preprocessed_data",
+      "path": "preprocessing\\preprocessed.parquet",
+      "type": "data",
+      "stage": "ingest_preprocess",
+      "size_bytes": 1668303,
+      "sha256": null,
+      "created_at": "2026-02-20T16:05:07.670449+00:00"
+    },
+    {
+      "name": "factor_scores",
+      "path": "psychometrics\\factor_scores.csv",
+      "type": "data",
+      "stage": "psychometrics",
+      "size_bytes": 339990,
+      "sha256": null,
+      "created_at": "2026-02-20T16:05:07.809165+00:00"
+    }
+  ]
+}

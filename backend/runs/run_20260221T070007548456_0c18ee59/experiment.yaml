@@ -1,0 +1,89 @@
+# Experiment Configuration
+# This file defines all hyperparameters, seeds, and split settings.
+# Changing this file changes the config_hash included in run_id.
+
+reproducibility:
+  random_seed: 42
+  numpy_seed: 42
+  sklearn_seed: 42
+
+data:
+  input_path: "../mnt/data/dataset.csv"
+  text_col: "text_feedback"
+  survey_item_cols:
+    - item_1
+    - item_2
+    - item_3
+    - item_4
+    - item_5
+    - item_6
+    - item_7
+    - item_8
+    - item_9
+  label_cols:
+    language: "language"
+    detail_level: "detail_level"
+    sentiment: "sentiment_class"
+
+splits:
+  train_ratio: 0.80
+  val_ratio: 0.10
+  test_ratio: 0.10
+  stratify_col: "sentiment_class"
+
+text_tasks:
+  tasks:
+    - name: "language"
+      label_col: "language"
+      classes: ["ru", "kz", "mixed"]
+    - name: "sentiment"
+      label_col: "sentiment_class"
+      classes: ["positive", "neutral", "negative"]
+    - name: "detail_level"
+      label_col: "detail_level"
+      classes: ["short", "medium", "long"]
+
+  tfidf:
+    max_features: 50000
+    ngram_range: [1, 2]
+    sublinear_tf: true
+    C: 1.0
+    max_iter: 1000
+
+  char_ngram:
+    analyzer: "char_wb"
+    ngram_range: [2, 5]
+    max_features: 100000
+    sublinear_tf: true
+    C: 1.0
+    max_iter: 1000
+
+  # Neutral inflation threshold — flag as warning if exceeded
+  sentiment_neutral_inflation_threshold: 0.60
+
+fusion:
+  text_embedding_max_features: 5000
+  huber_epsilon: 1.35
+  huber_max_iter: 200
+  standardize_targets: true
+  ablations:
+    - shuffle_text
+    - length_only
+
+contradiction:
+  # Top/bottom decile thresholds for factor scores
+  high_factor_percentile: 90
+  low_factor_percentile: 10
+  # Sentiment classes to check
+  strong_negative_class: "negative"
+  strong_positive_class: "positive"
+
+evaluation:
+  classification_metrics: ["macro_f1", "accuracy", "per_class_f1"]
+  regression_metrics: ["mae", "r_squared"]
+  stratify_by: ["language", "detail_level"]
+
+reporting:
+  formats: ["markdown"]
+  include_model_cards: true
+  include_data_dictionary: true

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RunMetadata",
+  "type": "object",
+  "required": ["run_id", "created_at", "config_hash", "data_snapshot_id", "random_seed", "system_info", "stages"],
+  "properties": {
+    "run_id": {"type": "string", "description": "Unique run identifier"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "config_hash": {"type": "string", "description": "SHA256 of experiment.yaml"},
+    "data_snapshot_id": {"type": "string", "description": "SHA256 of raw dataset file"},
+    "git_commit": {"type": "string", "description": "Git commit hash at run time"},
+    "random_seed": {"type": "integer"},
+    "system_info": {
+      "type": "object",
+      "properties": {
+        "python_version": {"type": "string"},
+        "platform": {"type": "string"},
+        "numpy_version": {"type": "string"},
+        "sklearn_version": {"type": "string"},
+        "pandas_version": {"type": "string"}
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/StageStatus"
+      }
+    }
+  },
+  "definitions": {
+    "StageStatus": {
+      "type": "object",
+      "required": ["name", "status"],
+      "properties": {
+        "name": {"type": "string"},
+        "status": {"type": "string", "enum": ["pending", "running", "completed", "failed", "skipped"]},
+        "started_at": {"type": ["string", "null"]},
+        "completed_at": {"type": ["string", "null"]},
+        "duration_seconds": {"type": ["number", "null"]},
+        "error": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ArtifactManifest",
+  "type": "object",
+  "required": ["run_id", "created_at", "artifacts"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "type", "stage"],
+        "properties": {
+          "name": {"type": "string"},
+          "path": {"type": "string", "description": "Relative path from run root"},
+          "type": {"type": "string", "enum": ["data", "model", "metrics", "report", "model_card", "config", "snapshot"]},
+          "stage": {"type": "string"},
+          "size_bytes": {"type": ["integer", "null"]},
+          "sha256": {"type": ["string", "null"]},
+          "created_at": {"type": "string"}
+        }
+      }
+    }
+  }
+}

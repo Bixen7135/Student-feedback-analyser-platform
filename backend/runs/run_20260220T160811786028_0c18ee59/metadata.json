@@ -1,0 +1,89 @@
+{
+  "run_id": "run_20260220T160811786028_0c18ee59",
+  "created_at": "2026-02-20T16:08:11.791282+00:00",
+  "config_hash": "0c18ee591d2d8696",
+  "data_snapshot_id": "7828d96cb3ec0dfc",
+  "git_commit": "50fb18a",
+  "random_seed": 42,
+  "system_info": {
+    "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "numpy_version": "2.4.2",
+    "sklearn_version": "1.8.0",
+    "pandas_version": "3.0.1",
+    "numpy": "2.4.2",
+    "pandas": "3.0.1",
+    "sklearn": "1.8.0",
+    "scipy": "1.17.0",
+    "semopy": "2.3.11",
+    "factor_analyzer": "unknown",
+    "fastapi": "0.129.0",
+    "pydantic": "2.12.5"
+  },
+  "stages": {
+    "ingest_preprocess": {
+      "name": "ingest_preprocess",
+      "status": "completed",
+      "started_at": "2026-02-20T16:08:11.815365+00:00",
+      "completed_at": "2026-02-20T16:08:12.261646+00:00",
+      "duration_seconds": 0.45,
+      "error": null
+    },
+    "psychometrics": {
+      "name": "psychometrics",
+      "status": "completed",
+      "started_at": "2026-02-20T16:08:12.264157+00:00",
+      "completed_at": "2026-02-20T16:08:12.406198+00:00",
+      "duration_seconds": 0.14,
+      "error": null
+    },
+    "splits": {
+      "name": "splits",
+      "status": "completed",
+      "started_at": "2026-02-20T16:08:12.407198+00:00",
+      "completed_at": "2026-02-20T16:08:12.470498+00:00",
+      "duration_seconds": 0.06,
+      "error": null
+    },
+    "text_tasks": {
+      "name": "text_tasks",
+      "status": "completed",
+      "started_at": "2026-02-20T16:08:12.471497+00:00",
+      "completed_at": "2026-02-20T16:09:18.686766+00:00",
+      "duration_seconds": 66.22,
+      "error": null
+    },
+    "fusion": {
+      "name": "fusion",
+      "status": "completed",
+      "started_at": "2026-02-20T16:09:18.688604+00:00",
+      "completed_at": "2026-02-20T16:09:29.577536+00:00",
+      "duration_seconds": 10.89,
+      "error": null
+    },
+    "contradiction": {
+      "name": "contradiction",
+      "status": "completed",
+      "started_at": "2026-02-20T16:09:29.577536+00:00",
+      "completed_at": "2026-02-20T16:09:29.591385+00:00",
+      "duration_seconds": 0.01,
+      "error": null
+    },
+    "evaluation": {
+      "name": "evaluation",
+      "status": "completed",
+      "started_at": "2026-02-20T16:09:29.591385+00:00",
+      "completed_at": "2026-02-20T16:09:30.889130+00:00",
+      "duration_seconds": 1.3,
+      "error": null
+    },
+    "reporting": {
+      "name": "reporting",
+      "status": "completed",
+      "started_at": "2026-02-20T16:09:30.890417+00:00",
+      "completed_at": "2026-02-20T16:09:30.906009+00:00",
+      "duration_seconds": 0.02,
+      "error": null
+    }
+  }
+}

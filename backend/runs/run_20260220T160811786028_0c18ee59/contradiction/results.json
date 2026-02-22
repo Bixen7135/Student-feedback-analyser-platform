@@ -1,0 +1,24 @@
+{
+  "overall_rate": 0.6520562770562771,
+  "n_total": 1848,
+  "n_contradictions": 1205,
+  "by_type": {
+    "type_a_negative_high_score": 0.0946969696969697,
+    "type_b_positive_low_score": 0.5573593073593074
+  },
+  "stratified_by_language": {
+    "ru": 0.6406109613656783,
+    "kz": 0.6703786191536748,
+    "mixed": 0.6678321678321678
+  },
+  "stratified_by_detail_level": {
+    "long": 0.6978798586572438,
+    "medium": 0.6845493562231759,
+    "short": 0.49142857142857144
+  },
+  "thresholds": {
+    "high_percentile": 90.0,
+    "low_percentile": 10.0
+  },
+  "disclaimer": "Contradiction flags are for monitoring only. Predictions are not altered."
+}

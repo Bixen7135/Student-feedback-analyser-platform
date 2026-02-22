@@ -1,0 +1,31 @@
+{
+  "analysis_id": "analysis_5c3e5ea023984ce2",
+  "dataset_id": "ba559537-a06d-473f-bf82-177466b0aa17",
+  "dataset_version": null,
+  "n_rows": 18476,
+  "n_rows_processed": 18476,
+  "text_col": "text_feedback",
+  "models_applied": [
+    {
+      "model_id": "b554b47c-7b23-4944-b21f-14a6965628b1",
+      "model_name": "sentiment_tfidf_dsba559537",
+      "task": "sentiment",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "sentiment_b554b47c_pred",
+      "conf_col": "sentiment_b554b47c_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "positive": 0.5556,
+        "neutral": 0.3498,
+        "negative": 0.0946
+      },
+      "classes": [
+        "negative",
+        "neutral",
+        "positive"
+      ]
+    }
+  ],
+  "created_at": "2026-02-22T04:11:13.504953+00:00"
+}

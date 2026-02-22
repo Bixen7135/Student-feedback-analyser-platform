@@ -1,0 +1,7 @@
+{
+  "n_train": 14780,
+  "n_val": 1848,
+  "n_test": 1848,
+  "strategy": "stratified_by_sentiment_class",
+  "seed": 42
+}

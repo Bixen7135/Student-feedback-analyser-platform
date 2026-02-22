@@ -1,0 +1,11 @@
+{
+  "train_ratio": 0.8,
+  "val_ratio": 0.1,
+  "test_ratio": 0.1,
+  "class_balancing": "class_weight",
+  "max_features": null,
+  "C": null,
+  "max_iter": null,
+  "text_col": "text_feedback",
+  "label_col": "detail_level"
+}

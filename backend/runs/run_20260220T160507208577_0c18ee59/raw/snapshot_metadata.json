@@ -1,0 +1,7 @@
+{
+  "source_path": "..\\mnt\\data\\dataset.csv",
+  "snapshot_path": "runs\\run_20260220T160507208577_0c18ee59\\raw\\dataset.csv",
+  "sha256": "7828d96cb3ec0dfcef16faa45230e44f3661ea7459c8f6a455eaee196c1e0df5",
+  "snapshot_created_at": "2026-02-20T16:05:07.249349+00:00",
+  "file_size_bytes": 3908949
+}

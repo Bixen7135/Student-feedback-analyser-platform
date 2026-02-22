@@ -1,0 +1,35 @@
+# Factor Structure Configuration for Ordinal CFA
+# Three latent factors derived from nine survey items.
+# Text data is never used to define or adjust these factors.
+
+factor_structure:
+  program_quality:
+    label: "Program Quality"
+    items:
+      - item_1  # Expectation fulfillment
+      - item_2  # Theoretical knowledge and skills sufficiency
+      - item_3  # Curriculum alignment (goals, methods, assessment)
+
+  resources_teaching:
+    label: "Resources and Teaching"
+    items:
+      - item_4  # Faculty quality (knowledge, qualifications, pedagogy)
+      - item_5  # Infrastructure and material-technical resources
+      - item_6  # Learning materials (textbooks, methodological guides)
+
+  digital_assessment:
+    label: "Digital Environment and Assessment"
+    items:
+      - item_7  # E-learning environment (internet, Moodle, Platonus, e-library)
+      - item_8  # Practical training quality (internships/practicum)
+      - item_9  # Knowledge-assessment alignment (diploma/exam results)
+
+# CFA fitting method
+cfa:
+  correlation_method: "spearman"   # "spearman" or "polychoric"
+  estimation_method: "ml"          # maximum likelihood
+  rotation: null                   # no rotation for CFA
+
+# Factor score extraction method
+factor_scores:
+  method: "regression"             # Bartlett regression method

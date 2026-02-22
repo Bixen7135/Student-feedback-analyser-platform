@@ -1,0 +1,49 @@
+{
+  "method": "semopy_cfa",
+  "n_obs": 18476,
+  "factor_names": [
+    "program_quality",
+    "resources_teaching",
+    "digital_assessment"
+  ],
+  "fit_statistics": {
+    "cfi": 0.9999103229078486,
+    "rmsea": 0.0063607248334111716,
+    "gfi": 0.9997903875370784,
+    "agfi": 0.9996855813056176,
+    "nfi": 0.9997903875370784,
+    "tli": 0.9998654843617729,
+    "chi2": 41.93944096818604,
+    "chi2_df": 24.0,
+    "chi2_p": 0.013107700834381286
+  },
+  "reliability": {
+    "cronbach_alpha": {
+      "program_quality": 0.9240373584880583,
+      "resources_teaching": 0.9211007931663795,
+      "digital_assessment": 0.9225394726304462
+    },
+    "mcdonald_omega": {
+      "program_quality": 0.597930870967688,
+      "resources_teaching": 0.5983653955134048,
+      "digital_assessment": 0.6002455096366818
+    },
+    "alpha_if_item_deleted": {
+      "program_quality": {
+        "item_1": 0.8917849980345309,
+        "item_2": 0.8893610280235786,
+        "item_3": 0.8895376505169621
+      },
+      "resources_teaching": {
+        "item_4": 0.8873370473857429,
+        "item_5": 0.8876073039020942,
+        "item_6": 0.8834807302515415
+      },
+      "digital_assessment": {
+        "item_7": 0.8917713244894026,
+        "item_8": 0.8869077791961115,
+        "item_9": 0.8857446770782946
+      }
+    }
+  }
+}

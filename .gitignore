@@ -39,3 +39,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# project docs (user preference to keep local)
+.gitignore
+.claude/
+.claudeignore
+PROGRESS.md
+RUNBOOK.md
+TESTS.md
+TECHNICAL SPECIFICATION.md
+TODO.md
+initial prompt.md
+DECISIONS.md
+claude.md
+CHANGELOG.md
+README.md
+PROJECT FILES/
+project state tracking/
