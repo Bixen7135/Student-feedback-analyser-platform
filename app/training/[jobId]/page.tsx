@@ -422,7 +422,7 @@ export default function TrainingJobPage() {
                     fontFamily: "var(--font-jetbrains)",
                   }}
                 >
-                  View Model →
+                  View Registered Model →
                 </Link>
               </div>
             </div>
@@ -535,3 +535,4 @@ export default function TrainingJobPage() {
     </div>
   );
 }
+

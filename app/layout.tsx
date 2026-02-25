@@ -25,8 +25,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Feedback Lab — Analysis Platform",
-  description: "Multilingual student feedback analysis — batch-only, reproducible pipeline",
+  title: "Feedback Lab - Analysis Platform",
+  description:
+    "Multilingual student feedback analysis - batch-only, reproducible pipeline",
 };
 
 export default function RootLayout({

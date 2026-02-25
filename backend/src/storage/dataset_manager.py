@@ -1292,7 +1292,7 @@ class DatasetManager:
     # ------------------------------------------------------------------
 
     def get_dependencies(self, dataset_id: str) -> dict[str, int]:
-        """Check how many models and analyses depend on this dataset."""
+        """Check how many models, analyses, and pipeline runs depend on this dataset."""
         models_row = self.db.fetchone(
             "SELECT COUNT(*) as cnt FROM models WHERE dataset_id = ? AND status = 'active'",
             (dataset_id,),
@@ -1301,9 +1301,14 @@ class DatasetManager:
             "SELECT COUNT(*) as cnt FROM analysis_runs WHERE dataset_id = ?",
             (dataset_id,),
         )
+        pipeline_runs_row = self.db.fetchone(
+            "SELECT COUNT(*) as cnt FROM pipeline_runs WHERE dataset_id = ?",
+            (dataset_id,),
+        )
         return {
             "models": models_row["cnt"] if models_row else 0,
             "analyses": analyses_row["cnt"] if analyses_row else 0,
+            "pipeline_runs": pipeline_runs_row["cnt"] if pipeline_runs_row else 0,
         }
 
     def delete_dataset(self, dataset_id: str, force: bool = False) -> dict[str, Any]:

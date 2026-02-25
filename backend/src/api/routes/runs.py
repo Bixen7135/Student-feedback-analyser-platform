@@ -8,7 +8,7 @@ from pathlib import Path
 import orjson  # type: ignore
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
-from src.api.dependencies import get_run_manager, get_dataset_manager
+from src.api.dependencies import get_run_manager, get_dataset_manager, get_db, get_model_registry
 from src.api.schemas import (
     CreateRunRequest,
     RunDetailResponse,
@@ -86,6 +86,7 @@ async def create_run(
     request: CreateRunRequest,
     background_tasks: BackgroundTasks,
     mgr: RunManager = Depends(get_run_manager),
+    db=Depends(get_db),
 ):
     """Create a new run and optionally launch the full pipeline in background."""
     import hashlib
@@ -120,6 +121,7 @@ async def create_run(
         dataset_version=request.dataset_version,
         branch_id=request.branch_id,
         name=request.name,
+        db=db,
     )
     meta = mgr.load_run(run_id)
     return _run_to_summary(meta)
@@ -140,6 +142,8 @@ async def start_stage(
     stage_name: str,
     background_tasks: BackgroundTasks,
     mgr: RunManager = Depends(get_run_manager),
+    db=Depends(get_db),
+    model_registry=Depends(get_model_registry),
 ):
     """Start a pipeline stage for a run (runs synchronously via background task)."""
     if not mgr.run_exists(run_id):
@@ -154,7 +158,7 @@ async def start_stage(
 
     # For run_full, launch in background
     if stage_name == "run_full":
-        background_tasks.add_task(_run_full_background, run_id, mgr)
+        background_tasks.add_task(_run_full_background, run_id, mgr, db, model_registry)
         return {"status": "started", "run_id": run_id, "stage": stage_name}
 
     return {"status": "accepted", "run_id": run_id, "stage": stage_name}
@@ -187,7 +191,7 @@ async def get_stage_status(
     return stage
 
 
-def _run_full_background(run_id: str, mgr: RunManager) -> None:
+def _run_full_background(run_id: str, mgr: RunManager, db, model_registry) -> None:
     """Background task to run the full pipeline for an existing run.
 
     Must be a plain (non-async) function so FastAPI runs it in a thread-pool
@@ -223,6 +227,8 @@ def _run_full_background(run_id: str, mgr: RunManager) -> None:
                 dataset_id=dataset_id,
                 dataset_version=dataset_version,
                 branch_id=branch_id,
+                model_registry=model_registry,
+                db=db,
             )
         else:
             data_path = _resolve_data_path()
@@ -233,6 +239,8 @@ def _run_full_background(run_id: str, mgr: RunManager) -> None:
                 runs_dir=mgr.runs_dir,
                 seed=seed,
                 existing_run_id=run_id,
+                model_registry=model_registry,
+                db=db,
             )
     except Exception:
         traceback.print_exc()

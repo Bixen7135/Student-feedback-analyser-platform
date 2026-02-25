@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, use, useCallback } from "react";
+import { useEffect, useState, use, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   fetchDatasetDetail,
   fetchDatasetPreview,
@@ -73,74 +74,6 @@ const selectStyle = {
   fontSize: "11px",
   fontFamily: "var(--font-jetbrains)",
 } as const;
-
-// ---------------------------------------------------------------------------
-// Small Modal wrapper
-// ---------------------------------------------------------------------------
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 50,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        className="rounded-xl"
-        style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          padding: "24px",
-          width: "420px",
-          maxWidth: "92vw",
-        }}
-      >
-        <h2
-          style={{
-            fontFamily: "var(--font-syne)",
-            fontWeight: 600,
-            fontSize: "16px",
-            color: "var(--text-primary)",
-            marginBottom: "16px",
-          }}
-        >
-          {title}
-        </h2>
-        {children}
-        <button
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: "8px",
-            right: "12px",
-            background: "none",
-            border: "none",
-            color: "var(--text-tertiary)",
-            fontSize: "16px",
-            cursor: "pointer",
-          }}
-        >
-          ✕
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
 export default function DatasetDetailPage({
@@ -221,6 +154,9 @@ export default function DatasetDetailPage({
   const [moveSourceVersionReason, setMoveSourceVersionReason] = useState("");
   const [moveTargetBranchId, setMoveTargetBranchId] = useState<string | null>(null);
   const [moveSaving, setMoveSaving] = useState(false);
+  const pendingNewRowsRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToNewRowsRef = useRef(false);
+  const saveVersionDialogTitleRef = useRef<HTMLHeadingElement>(null);
 
   const totalPendingChanges =
     pendingEdits.size + pendingDeleteRows.length + pendingNewRows.length + pendingColumnRenames.size;
@@ -430,8 +366,40 @@ export default function DatasetDetailPage({
     if (!preview) return;
     const blank: Record<string, string> = {};
     for (const col of preview.columns) blank[col] = "";
+    shouldScrollToNewRowsRef.current = true;
     setPendingNewRows((prev) => [...prev, blank]);
   };
+
+  const openSaveVersionDialog = useCallback(() => {
+    setShowVersionDialog(true);
+  }, []);
+
+  const handlePreviewLimitChange = useCallback((nextLimit: number) => {
+    setPreviewLimit(nextLimit);
+    setPreviewOffset(0);
+  }, []);
+
+  useEffect(() => {
+    if (!showVersionDialog) return;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const timer = window.setTimeout(() => {
+      saveVersionDialogTitleRef.current?.focus();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [showVersionDialog]);
+
+  useEffect(() => {
+    if (!shouldScrollToNewRowsRef.current || pendingNewRows.length === 0) return;
+    shouldScrollToNewRowsRef.current = false;
+    const timer = window.setTimeout(() => {
+      pendingNewRowsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const firstInput = pendingNewRowsRef.current?.querySelector("tbody tr:last-child input");
+      if (firstInput instanceof HTMLInputElement) {
+        firstInput.focus();
+      }
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [pendingNewRows.length]);
 
   const updateNewRowCell = (rowIdx: number, col: string, value: string) => {
     setPendingNewRows((prev) => prev.map((r, i) => (i === rowIdx ? { ...r, [col]: value } : r)));
@@ -614,6 +582,11 @@ export default function DatasetDetailPage({
   }
 
   async function handleMoveVersion(sourceVersionId: string) {
+    const sourceVersion = versions.find((v) => v.id === sourceVersionId);
+    if (sourceVersion && moveTargetBranchId === sourceVersion.branch_id) {
+      setError("Cannot move a version to the same branch");
+      return;
+    }
     if (!moveTargetBranchId) {
       setError("Please select a target branch");
       return;
@@ -725,6 +698,12 @@ export default function DatasetDetailPage({
   const selectedPreviewVersion = previewVersion !== null
     ? (branchVersions.find((v) => v.version === previewVersion) ?? null)
     : null;
+  const moveSourceVersion = moveSourceVersionId
+    ? (versions.find((v) => v.id === moveSourceVersionId) ?? null)
+    : null;
+  const moveTargetBranches = branches.filter(
+    (b) => !b.is_deleted && b.id !== moveSourceVersion?.branch_id
+  );
 
   return (
     <div style={{ padding: "32px", maxWidth: "960px" }} className="animate-fade-up">
@@ -793,6 +772,40 @@ export default function DatasetDetailPage({
               <span>v{ds.current_version}</span>
               {ds.author && <span>by {ds.author}</span>}
               <span>{new Date(ds.created_at).toLocaleString()}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: "12px" }}>
+              <Link
+                href={`/training?dataset_id=${datasetId}`}
+                style={{
+                  background: "var(--gold)",
+                  color: "#08080B",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-syne)",
+                  textDecoration: "none",
+                }}
+              >
+                Start Training
+              </Link>
+              <Link
+                href={`/analyses/new?dataset_id=${datasetId}`}
+                style={{
+                  background: "var(--bg-elevated)",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-syne)",
+                  textDecoration: "none",
+                }}
+              >
+                Start Analysis
+              </Link>
             </div>
 
             {/* Branch selector */}
@@ -898,13 +911,14 @@ export default function DatasetDetailPage({
 
           {preview && (
             <DataTable
+              storageKey={`dataset:${datasetId}:branch:${activeBranchId ?? "none"}`}
               columns={preview.columns}
               rows={preview.rows}
               totalRows={preview.total_rows}
               offset={previewOffset}
               limit={previewLimit}
               onPageChange={setPreviewOffset}
-              onLimitChange={setPreviewLimit}
+              onLimitChange={handlePreviewLimitChange}
               loading={previewLoading}
               editable={!isReadOnlyVersion}
               pendingEdits={pendingEdits}
@@ -917,9 +931,17 @@ export default function DatasetDetailPage({
 
           {/* Pending new rows */}
           {pendingNewRows.length > 0 && preview && (
-            <div style={{ marginTop: "16px", border: "1px solid rgba(251,146,60,0.4)", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ background: "rgba(251,146,60,0.08)", padding: "8px 12px", fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "rgb(251,146,60)", borderBottom: "1px solid rgba(251,146,60,0.2)" }}>
-                {pendingNewRows.length} new row{pendingNewRows.length !== 1 ? "s" : ""} to add
+            <div ref={pendingNewRowsRef} style={{ marginTop: "16px", border: "1px solid rgba(251,146,60,0.4)", borderRadius: "8px", overflow: "hidden" }}>
+              <div style={{ background: "rgba(251,146,60,0.08)", padding: "8px 12px", borderBottom: "1px solid rgba(251,146,60,0.2)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "rgb(251,146,60)" }}>
+                  {pendingNewRows.length} new row{pendingNewRows.length !== 1 ? "s" : ""} to add
+                </span>
+                <button
+                  onClick={addNewRow}
+                  style={{ marginLeft: "auto", ...btnBase, background: "var(--bg-base)", color: "var(--text-secondary)", padding: "3px 10px", fontSize: "10px" }}
+                >
+                  + Add Row
+                </button>
               </div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-jetbrains)", fontSize: "11px" }}>
@@ -969,7 +991,7 @@ export default function DatasetDetailPage({
                 Discard
               </button>
               <button
-                onClick={() => setShowVersionDialog(true)}
+                onClick={openSaveVersionDialog}
                 style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "5px 14px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: "pointer" }}
               >
                 Save as new version →
@@ -1074,6 +1096,10 @@ export default function DatasetDetailPage({
                         onClick={() => {
                           setMoveSourceVersionId(v.id);
                           setMoveSourceVersionReason(v.reason);
+                          const firstTargetBranch = branches.find(
+                            (b) => !b.is_deleted && b.id !== v.branch_id
+                          );
+                          setMoveTargetBranchId(firstTargetBranch?.id ?? null);
                           setShowMoveVersionDialog(true);
                         }}
                         style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontSize: "10px", padding: "3px 10px" }}
@@ -1174,7 +1200,6 @@ export default function DatasetDetailPage({
 
           {branches.map((branch) => {
             const isActive = branch.id === activeBranchId;
-            const isEditingThis = editingBranch?.id === branch.id;
             const isConfirmDeleteThis = confirmDeleteBranch === branch.id;
             const branchVers = versions.filter((v) => v.branch_id === branch.id);
             const headVer = branch.head_version_id
@@ -1285,7 +1310,7 @@ export default function DatasetDetailPage({
       {showVersionDialog && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", padding: "24px", width: "400px", maxWidth: "90vw" }}>
-            <h2 style={{ fontFamily: "var(--font-syne)", fontWeight: 600, fontSize: "16px", color: "var(--text-primary)", marginBottom: "16px" }}>Save as new version</h2>
+            <h2 ref={saveVersionDialogTitleRef} tabIndex={-1} style={{ fontFamily: "var(--font-syne)", fontWeight: 600, fontSize: "16px", color: "var(--text-primary)", marginBottom: "16px" }}>Save as new version</h2>
             {activeBranch && (
               <div style={{ marginBottom: "12px", fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
                 Branch: <span style={{ color: "var(--gold)" }}>{activeBranch.name}</span>
@@ -1503,20 +1528,28 @@ export default function DatasetDetailPage({
                   value={moveTargetBranchId ?? ""}
                   onChange={(e) => setMoveTargetBranchId(e.target.value || null)}
                   style={{ ...inputStyle, outline: "none" }}
+                  disabled={moveTargetBranches.length === 0}
                 >
-                  <option value="" disabled>Select a branch</option>
-                  {branches.filter((b) => !b.is_deleted).map((b) => (
+                  <option value="" disabled>
+                    {moveTargetBranches.length === 0 ? "No other branches available" : "Select a branch"}
+                  </option>
+                  {moveTargetBranches.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name} {b.is_default ? "(default)" : ""}
                     </option>
                   ))}
                 </select>
               </div>
+              {moveTargetBranches.length === 0 && (
+                <div style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--warning)" }}>
+                  Create another branch first to move this version.
+                </div>
+              )}
               <div className="flex items-center gap-2" style={{ marginTop: "4px" }}>
                 <button
                   onClick={() => moveSourceVersionId && handleMoveVersion(moveSourceVersionId)}
-                  disabled={moveSaving || !moveTargetBranchId}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: moveSaving || !moveTargetBranchId ? "default" : "pointer", opacity: moveSaving || !moveTargetBranchId ? 0.5 : 1 }}
+                  disabled={moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? "default" : "pointer", opacity: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? 0.5 : 1 }}
                 >
                   {moveSaving ? "Moving…" : "Move Version"}
                 </button>
@@ -1534,3 +1567,4 @@ export default function DatasetDetailPage({
     </div>
   );
 }
+

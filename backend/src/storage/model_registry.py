@@ -45,6 +45,7 @@ class ModelRegistry:
         metrics: dict | None = None,
         run_id: str | None = None,
         base_model_id: str | None = None,
+        job_id: str | None = None,
     ) -> ModelMeta:
         """Register a trained model in the registry.
 
@@ -90,11 +91,11 @@ class ModelRegistry:
         self.db.execute(
             """INSERT INTO models
             (id, name, task, model_type, version, dataset_id, dataset_version,
-             config, metrics, created_at, status, storage_path, run_id, base_model_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             config, metrics, created_at, status, storage_path, run_id, base_model_id, job_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (model_id, name, task, model_type, version, dataset_id, dataset_version,
              orjson.dumps(config).decode(), orjson.dumps(metrics).decode(),
-             now, "active", storage_path, run_id, base_model_id),
+             now, "active", storage_path, run_id, base_model_id, job_id),
         )
         self.db.commit()
 
@@ -112,6 +113,7 @@ class ModelRegistry:
             storage_path=storage_path,
             run_id=run_id,
             base_model_id=base_model_id,
+            job_id=job_id,
         )
         log.info("model_registered", id=model_id, task=task, model_type=model_type, version=version)
         return meta
@@ -244,12 +246,12 @@ class ModelRegistry:
         if model is None:
             raise ValueError(f"Model not found: {model_id}")
 
-        # Check for dependent analyses
+        # Check for dependent analyses using the normalized refs table
         deps = self.db.fetchall(
-            """SELECT id, name FROM analysis_runs
-            WHERE JSON_EXTRACT(model_ids, '$') LIKE ?
-            AND status != 'deleted'""",
-            (f'%"{model_id}"%',),
+            """SELECT ar.id, ar.name FROM analysis_runs ar
+            JOIN analysis_model_refs amr ON amr.analysis_id = ar.id
+            WHERE amr.model_id = ? AND ar.status != 'failed'""",
+            (model_id,),
         )
 
         if deps:

@@ -61,6 +61,7 @@ class AnalysisJobResponse(BaseModel):
     completed_at: str | None
     error: str | None
     result_summary: dict | None
+    psychometrics_warning: str | None = None
 
 
 class AnalysisListResponse(BaseModel):
@@ -119,12 +120,29 @@ async def start_analysis(
             status_code=404, detail=f"Dataset not found: {body.dataset_id}"
         )
 
+    has_psychometrics = db.fetchone(
+        "SELECT id FROM pipeline_runs WHERE dataset_id = ? AND status = 'completed' LIMIT 1",
+        (body.dataset_id,),
+    )
+    psychometrics_warning = None if has_psychometrics else (
+        "No completed pipeline run found for this dataset. "
+        "Psychometrics has not been validated. See Scientific Spec."
+    )
+
     # Validate all model IDs exist
     for model_id in body.model_ids:
         m = model_registry.get_model(model_id)
         if m is None:
             raise HTTPException(
                 status_code=404, detail=f"Model not found: {model_id}"
+            )
+        if m.dataset_id is not None and m.dataset_id != body.dataset_id:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Model {model_id} is trained on dataset {m.dataset_id} "
+                    f"and is incompatible with dataset {body.dataset_id}."
+                ),
             )
 
     job_id = f"analysis_{uuid.uuid4().hex[:16]}"
@@ -138,6 +156,7 @@ async def start_analysis(
         tags=body.tags,
         dataset_version=body.dataset_version,
         branch_id=body.branch_id,
+        db=db,
     )
 
     background_tasks.add_task(
@@ -157,7 +176,7 @@ async def start_analysis(
         branch_id=body.branch_id,
     )
 
-    return AnalysisJobResponse(**job)
+    return AnalysisJobResponse(**job, psychometrics_warning=psychometrics_warning)
 
 
 @router.get("", response_model=AnalysisListResponse)
@@ -182,14 +201,6 @@ async def list_analyses(
         page=page,
         per_page=per_page,
     )
-
-    # Merge with in-memory jobs for running/pending status that may not be in DB yet
-    in_memory = {j["job_id"]: j for j in analysis_runner.list_jobs()}
-    for a in analyses:
-        if a["id"] in in_memory:
-            mem = in_memory[a["id"]]
-            if mem["status"] in ("running", "pending"):
-                a["status"] = mem["status"]
 
     return AnalysisListResponse(
         analyses=analyses,
@@ -224,7 +235,7 @@ async def get_analysis(
             "error": job["error"],
             "result_summary": job["result_summary"],
             "created_at": job.get("started_at"),
-            "run_id": analysis_id,
+            "pipeline_run_id": "",
         }
 
     # Load from DB
@@ -248,7 +259,7 @@ async def get_analysis(
                 "error": job["error"],
                 "result_summary": job["result_summary"],
                 "created_at": job.get("started_at"),
-                "run_id": analysis_id,
+                "pipeline_run_id": "",
             }
         raise HTTPException(
             status_code=404, detail=f"Analysis not found: {analysis_id}"

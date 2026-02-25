@@ -1,0 +1,132 @@
+{
+  "analysis_id": "analysis_69fd0f0202704384",
+  "dataset_id": "ba559537-a06d-473f-bf82-177466b0aa17",
+  "dataset_version": null,
+  "branch_id": null,
+  "n_rows": 18476,
+  "n_rows_processed": 18476,
+  "text_col": "text_feedback",
+  "models_applied": [
+    {
+      "model_id": "cffd408b-2c8a-4055-b8ab-5cf6b0ab5bfa",
+      "model_name": "pipeline_detail_level_char_ngram_run_20260222",
+      "task": "detail_level",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "detail_level_cffd408b_pred",
+      "conf_col": "detail_level_cffd408b_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "medium": 0.479,
+        "long": 0.2962,
+        "short": 0.2248
+      },
+      "classes": [
+        "long",
+        "medium",
+        "short"
+      ]
+    },
+    {
+      "model_id": "b6d6c593-fa48-4c96-9f9e-6ca64da4dc4d",
+      "model_name": "pipeline_detail_level_tfidf_run_20260222",
+      "task": "detail_level",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "detail_level_b6d6c593_pred",
+      "conf_col": "detail_level_b6d6c593_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "medium": 0.4493,
+        "long": 0.2956,
+        "short": 0.2551
+      },
+      "classes": [
+        "long",
+        "medium",
+        "short"
+      ]
+    },
+    {
+      "model_id": "e5119f4f-86d5-452d-94fe-1a073c7b1a29",
+      "model_name": "pipeline_sentiment_char_ngram_run_20260222",
+      "task": "sentiment",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "sentiment_e5119f4f_pred",
+      "conf_col": "sentiment_e5119f4f_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "positive": 0.5569,
+        "neutral": 0.3483,
+        "negative": 0.0948
+      },
+      "classes": [
+        "negative",
+        "neutral",
+        "positive"
+      ]
+    },
+    {
+      "model_id": "1e382fdb-befa-41e6-b6dc-8b5f664f8202",
+      "model_name": "pipeline_sentiment_tfidf_run_20260222",
+      "task": "sentiment",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "sentiment_1e382fdb_pred",
+      "conf_col": "sentiment_1e382fdb_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "positive": 0.5556,
+        "neutral": 0.3498,
+        "negative": 0.0946
+      },
+      "classes": [
+        "negative",
+        "neutral",
+        "positive"
+      ]
+    },
+    {
+      "model_id": "f082b474-200b-4bd3-9675-a2e1e142ca56",
+      "model_name": "pipeline_language_char_ngram_run_20260222",
+      "task": "language",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "language_f082b474_pred",
+      "conf_col": "language_f082b474_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "ru": 0.6091,
+        "kz": 0.2407,
+        "mixed": 0.1502
+      },
+      "classes": [
+        "kz",
+        "mixed",
+        "ru"
+      ]
+    },
+    {
+      "model_id": "bd7800e4-a022-4bce-8464-13a75f805c9f",
+      "model_name": "pipeline_language_tfidf_run_20260222",
+      "task": "language",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "language_bd7800e4_pred",
+      "conf_col": "language_bd7800e4_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "ru": 0.6079,
+        "kz": 0.239,
+        "mixed": 0.1531
+      },
+      "classes": [
+        "kz",
+        "mixed",
+        "ru"
+      ]
+    }
+  ],
+  "created_at": "2026-02-22T21:23:13.023894+00:00"
+}

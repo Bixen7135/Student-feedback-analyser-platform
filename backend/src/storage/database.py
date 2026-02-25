@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     model_ids       TEXT NOT NULL DEFAULT '[]',      -- JSON array
     created_at      TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending', -- pending | running | completed | failed
-    run_id          TEXT NOT NULL DEFAULT '',         -- link to pipeline run dir
+    pipeline_run_id TEXT NOT NULL DEFAULT '',        -- link to pipeline run (if spawned from one)
     result_summary  TEXT NOT NULL DEFAULT '{}'        -- JSON
 );
 
@@ -102,6 +102,50 @@ CREATE TABLE IF NOT EXISTS saved_filters (
     created_at      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS analysis_model_refs (
+    analysis_id TEXT NOT NULL,
+    model_id    TEXT NOT NULL,
+    PRIMARY KEY (analysis_id, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_amr_model ON analysis_model_refs(model_id);
+
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id               TEXT PRIMARY KEY,   -- filesystem run_id: run_{ts}_{hash}
+    dataset_id       TEXT,
+    dataset_version  INTEGER,
+    branch_id        TEXT,
+    config_hash      TEXT NOT NULL DEFAULT '',
+    data_snapshot_id TEXT NOT NULL DEFAULT '',
+    random_seed      INTEGER NOT NULL DEFAULT 42,
+    status           TEXT NOT NULL DEFAULT 'pending',  -- pending|running|completed|failed
+    created_at       TEXT NOT NULL,
+    completed_at     TEXT,
+    git_commit       TEXT,
+    system_info      TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS training_jobs (
+    id              TEXT PRIMARY KEY,              -- job_id: job_{hex16}
+    training_run_id TEXT NOT NULL DEFAULT '',      -- training_{hex12} (artifacts dir)
+    model_id        TEXT,                          -- populated on completion
+    dataset_id      TEXT NOT NULL,
+    dataset_version INTEGER,
+    branch_id       TEXT,
+    task            TEXT NOT NULL,
+    model_type      TEXT NOT NULL,
+    seed            INTEGER NOT NULL DEFAULT 42,
+    name            TEXT,
+    base_model_id   TEXT,
+    config          TEXT NOT NULL DEFAULT '{}',
+    status          TEXT NOT NULL DEFAULT 'pending',
+    created_at      TEXT NOT NULL,
+    started_at      TEXT,
+    completed_at    TEXT,
+    error           TEXT,
+    metrics         TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_datasets_status ON datasets(status);
 CREATE INDEX IF NOT EXISTS idx_datasets_name ON datasets(name);
 CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset ON dataset_versions(dataset_id);
@@ -109,6 +153,9 @@ CREATE INDEX IF NOT EXISTS idx_models_task ON models(task);
 CREATE INDEX IF NOT EXISTS idx_models_dataset ON models(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_dataset ON analysis_runs(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_status ON analysis_runs(status);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_dataset ON pipeline_runs(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_training_jobs_dataset ON training_jobs(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_training_jobs_model ON training_jobs(model_id);
 """
 
 
@@ -201,6 +248,90 @@ class Database:
         existing_m = {row[1] for row in conn.execute("PRAGMA table_info(models)").fetchall()}
         if "base_model_id" not in existing_m:
             conn.execute("ALTER TABLE models ADD COLUMN base_model_id TEXT")
+
+        # Add job_id to models if missing (Phase 1 migration)
+        if "job_id" not in existing_m:
+            conn.execute("ALTER TABLE models ADD COLUMN job_id TEXT")
+
+        # Rename analysis_runs.run_id → pipeline_run_id (Phase 1 migration)
+        existing_ar = {row[1] for row in conn.execute("PRAGMA table_info(analysis_runs)").fetchall()}
+        if "run_id" in existing_ar and "pipeline_run_id" not in existing_ar:
+            conn.execute("ALTER TABLE analysis_runs RENAME COLUMN run_id TO pipeline_run_id")
+        elif "pipeline_run_id" not in existing_ar:
+            conn.execute("ALTER TABLE analysis_runs ADD COLUMN pipeline_run_id TEXT NOT NULL DEFAULT ''")
+
+        # Ensure new tables exist (idempotent — same DDL as _SCHEMA_SQL)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS pipeline_runs (
+                id               TEXT PRIMARY KEY,
+                dataset_id       TEXT,
+                dataset_version  INTEGER,
+                branch_id        TEXT,
+                config_hash      TEXT NOT NULL DEFAULT '',
+                data_snapshot_id TEXT NOT NULL DEFAULT '',
+                random_seed      INTEGER NOT NULL DEFAULT 42,
+                status           TEXT NOT NULL DEFAULT 'pending',
+                created_at       TEXT NOT NULL,
+                completed_at     TEXT,
+                git_commit       TEXT,
+                system_info      TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE TABLE IF NOT EXISTS training_jobs (
+                id              TEXT PRIMARY KEY,
+                training_run_id TEXT NOT NULL DEFAULT '',
+                model_id        TEXT,
+                dataset_id      TEXT NOT NULL,
+                dataset_version INTEGER,
+                branch_id       TEXT,
+                task            TEXT NOT NULL,
+                model_type      TEXT NOT NULL,
+                seed            INTEGER NOT NULL DEFAULT 42,
+                name            TEXT,
+                base_model_id   TEXT,
+                config          TEXT NOT NULL DEFAULT '{}',
+                status          TEXT NOT NULL DEFAULT 'pending',
+                created_at      TEXT NOT NULL,
+                started_at      TEXT,
+                completed_at    TEXT,
+                error           TEXT,
+                metrics         TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE INDEX IF NOT EXISTS idx_pipeline_runs_dataset ON pipeline_runs(dataset_id);
+            CREATE INDEX IF NOT EXISTS idx_training_jobs_dataset ON training_jobs(dataset_id);
+            CREATE INDEX IF NOT EXISTS idx_training_jobs_model ON training_jobs(model_id);
+        """)
+
+        # Create analysis_model_refs normalized table (Phase 2 migration)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS analysis_model_refs (
+                analysis_id TEXT NOT NULL,
+                model_id    TEXT NOT NULL,
+                PRIMARY KEY (analysis_id, model_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_amr_model ON analysis_model_refs(model_id);
+        """)
+
+        # Backfill analysis_model_refs from existing analysis_runs.model_ids JSON strings
+        existing_amr = conn.execute(
+            "SELECT COUNT(*) FROM analysis_model_refs"
+        ).fetchone()[0]
+        if existing_amr == 0:
+            rows = conn.execute(
+                "SELECT id, model_ids FROM analysis_runs WHERE model_ids != '[]' AND model_ids != ''"
+            ).fetchall()
+            import json as _json
+            for row in rows:
+                analysis_id = row[0]
+                try:
+                    model_ids = _json.loads(row[1])
+                except Exception:
+                    continue
+                for mid in model_ids:
+                    if mid:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO analysis_model_refs (analysis_id, model_id) VALUES (?, ?)",
+                            (analysis_id, mid),
+                        )
 
         # Create indexes that depend on migrated columns (safe to run after columns exist)
         conn.executescript("""

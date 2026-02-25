@@ -132,3 +132,17 @@ def generate_all_model_cards(run_dir: Path) -> list[Path]:
             paths.append(path)
 
     return paths
+
+
+def generate_model_card_for_registry_model(model_meta, output_dir: Path) -> Path:
+    """Generate a model card for a model already stored in ModelRegistry."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return generate_model_card(
+        task=model_meta.task,
+        model_type=model_meta.model_type,
+        metrics=model_meta.metrics or {},
+        hyperparameters=model_meta.config or {},
+        run_id=model_meta.run_id or "unknown",
+        run_dir=output_dir.parent,
+    )

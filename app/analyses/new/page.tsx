@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   fetchDatasets,
   fetchDatasetBranches,
   fetchDatasetVersions,
   fetchDatasetSchema,
+  fetchColumnRoles,
+  fetchModelDetail,
   fetchModels,
   startAnalysis,
   DatasetSummary,
@@ -19,8 +22,8 @@ const STEP_LABELS = ["Select Dataset", "Select Models", "Name & Launch"];
 
 const SYSTEM_ROLES: { value: string; label: string }[] = [
   { value: "", label: "(not used)" },
-  { value: "text_feedback", label: "text_feedback — feedback text" },
-  { value: "sentiment_class", label: "sentiment_class — sentiment label" },
+  { value: "text", label: "text — feedback text" },
+  { value: "sentiment", label: "sentiment — sentiment label" },
   { value: "language", label: "language — language label" },
   { value: "detail_level", label: "detail_level — detail level label" },
   { value: "survey_id", label: "survey_id — record ID" },
@@ -42,12 +45,14 @@ const TASK_LABELS: Record<string, string> = {
 
 export default function NewAnalysisPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [step, setStep] = useState(0);
 
   // Data
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [models, setModels] = useState<ModelSummary[]>([]);
+  const [compatibleModelIds, setCompatibleModelIds] = useState<Set<string>>(new Set());
   const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [datasetsError, setDatasetsError] = useState<string | null>(null);
@@ -72,17 +77,36 @@ export default function NewAnalysisPage() {
 
   // Derive text_col from the mapping table
   const textCol =
-    Object.entries(columnRoles).find(([, r]) => r === "text_feedback")?.[0] ?? "";
+    Object.entries(columnRoles).find(([, r]) => r === "text")?.[0] ?? "";
 
   // Launch
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [datasetPrefillApplied, setDatasetPrefillApplied] = useState(false);
+  const [modelPrefillApplied, setModelPrefillApplied] = useState(false);
+
+  const selectedVersionMeta =
+    selectedVersion == null
+      ? dsVersions[0] ?? null
+      : dsVersions.find((v) => v.version === selectedVersion) ?? null;
+  const selectedVersionId = selectedVersionMeta?.id;
+
+  function inferFallbackRole(columnName: string): string {
+    const normalized = columnName.trim().toLowerCase();
+    if (SYSTEM_ROLE_VALUES.has(normalized)) return normalized;
+    if (normalized === "text_feedback") return "text";
+    if (normalized === "sentiment_class") return "sentiment";
+    return "";
+  }
 
   // Fetch branches when dataset changes
   useEffect(() => {
     if (!selectedDataset) {
       setDsBranches([]);
       setSelectedBranch(null);
+      setModels([]);
+      setCompatibleModelIds(new Set());
+      setSelectedModelIds([]);
       return;
     }
     fetchDatasetBranches(selectedDataset.id)
@@ -109,25 +133,41 @@ export default function NewAnalysisPage() {
       .catch(() => {});
   }, [selectedDataset, selectedBranch]);
 
-  // Fetch dataset schema and auto-populate column roles when dataset changes
+  // Fetch dataset schema and auto-populate column roles when dataset/version changes.
   useEffect(() => {
     if (!selectedDataset) {
       setDatasetColumns([]);
       setColumnRoles({});
       return;
     }
-    fetchDatasetSchema(selectedDataset.id)
+    fetchDatasetSchema(
+      selectedDataset.id,
+      selectedVersionId ? { version_id: selectedVersionId } : undefined
+    )
       .then((res) => {
         const cols = res.columns.map((c: { name: string }) => c.name);
         setDatasetColumns(cols);
-        const auto: Record<string, string> = {};
-        for (const col of cols) {
-          auto[col] = SYSTEM_ROLE_VALUES.has(col) ? col : "";
-        }
-        setColumnRoles(auto);
+        return fetchColumnRoles(
+          selectedDataset.id,
+          selectedVersionId ? { version_id: selectedVersionId } : undefined
+        )
+          .then(({ column_roles }) => {
+            const mapped: Record<string, string> = {};
+            for (const col of cols) {
+              mapped[col] = column_roles[col] ?? inferFallbackRole(col);
+            }
+            setColumnRoles(mapped);
+          })
+          .catch(() => {
+            const auto: Record<string, string> = {};
+            for (const col of cols) {
+              auto[col] = inferFallbackRole(col);
+            }
+            setColumnRoles(auto);
+          });
       })
       .catch(() => {/* best-effort */});
-  }, [selectedDataset]);
+  }, [selectedDataset, selectedVersionId]);
 
   // Load datasets on mount
   useEffect(() => {
@@ -142,14 +182,62 @@ export default function NewAnalysisPage() {
       });
   }, []);
 
+  useEffect(() => {
+    if (datasetPrefillApplied || datasets.length === 0) return;
+
+    const datasetIdFromQuery = searchParams.get("dataset_id");
+    if (datasetIdFromQuery) {
+      const ds = datasets.find((d) => d.id === datasetIdFromQuery) ?? null;
+      if (ds) {
+        setSelectedDataset(ds);
+        setStep(1);
+      }
+      setDatasetPrefillApplied(true);
+      return;
+    }
+
+    const modelIdFromQuery = searchParams.get("model_id");
+    if (!modelIdFromQuery) {
+      setDatasetPrefillApplied(true);
+      return;
+    }
+
+    fetchModelDetail(modelIdFromQuery)
+      .then((model) => {
+        if (!model.dataset_id) return;
+        const ds = datasets.find((d) => d.id === model.dataset_id) ?? null;
+        if (ds) {
+          setSelectedDataset(ds);
+          setStep(1);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDatasetPrefillApplied(true));
+  }, [datasets, datasetPrefillApplied, searchParams]);
+
   // Load models when dataset is selected (step 1→2)
   useEffect(() => {
     if (step !== 1 || !selectedDataset) return;
     setModelsLoading(true);
     setModelsError(null);
-    fetchModels({ per_page: 100, sort: "created_at", order: "desc" })
-      .then((r) => {
-        setModels(r.models.filter((m) => m.status === "active"));
+    Promise.all([
+      fetchModels({
+        dataset_id: selectedDataset.id,
+        per_page: 100,
+        sort: "created_at",
+        order: "desc",
+      }),
+      fetchModels({ per_page: 100, sort: "created_at", order: "desc" }),
+    ])
+      .then(([compatibleResp, allResp]) => {
+        const allActive = allResp.models.filter((m) => m.status === "active");
+        const compatible = new Set(compatibleResp.models.map((m) => m.id));
+        for (const m of allActive) {
+          if (m.dataset_id == null) compatible.add(m.id);
+        }
+        setCompatibleModelIds(compatible);
+        setModels(allActive);
+        setSelectedModelIds((prev) => prev.filter((id) => compatible.has(id)));
         setModelsLoading(false);
       })
       .catch((e) => {
@@ -158,7 +246,23 @@ export default function NewAnalysisPage() {
       });
   }, [step, selectedDataset]);
 
+  useEffect(() => {
+    if (modelPrefillApplied || models.length === 0) return;
+    const modelIdFromQuery = searchParams.get("model_id");
+    if (!modelIdFromQuery) {
+      setModelPrefillApplied(true);
+      return;
+    }
+    if (compatibleModelIds.has(modelIdFromQuery)) {
+      setSelectedModelIds((prev) =>
+        prev.includes(modelIdFromQuery) ? prev : [...prev, modelIdFromQuery]
+      );
+    }
+    setModelPrefillApplied(true);
+  }, [models, compatibleModelIds, modelPrefillApplied, searchParams]);
+
   function toggleModel(modelId: string) {
+    if (!compatibleModelIds.has(modelId)) return;
     setSelectedModelIds((prev) =>
       prev.includes(modelId)
         ? prev.filter((id) => id !== modelId)
@@ -316,10 +420,10 @@ export default function NewAnalysisPage() {
                 >
                   {datasetsError}
                 </div>
-              ) : datasets.length === 0 ? (
-                <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
-                  No active datasets. <a href="/datasets/upload" style={{ color: "var(--gold)" }}>Upload one first.</a>
-                </div>
+	              ) : datasets.length === 0 ? (
+	                <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
+	                  No active datasets. <Link href="/datasets/upload" style={{ color: "var(--gold)" }}>Upload one first.</Link>
+	                </div>
               ) : (
                 <select
                   value={selectedDataset?.id ?? ""}
@@ -460,7 +564,7 @@ export default function NewAnalysisPage() {
             Select Models
           </h2>
           <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
-            Select one or more registered models to apply. Models from any dataset are available.
+            Select one or more registered models to apply. Incompatible models are shown but disabled.
           </p>
           {modelsError && (
             <div style={{ color: "var(--error, #ef4444)", fontSize: "13px", marginBottom: "12px" }}>
@@ -469,26 +573,30 @@ export default function NewAnalysisPage() {
           )}
           {modelsLoading ? (
             <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>Loading models…</div>
-          ) : models.length === 0 ? (
-            <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
-              No registered models. <a href="/training" style={{ color: "var(--gold)" }}>Train one first.</a>
-            </div>
+	          ) : models.length === 0 ? (
+	            <div style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
+	              No registered models. <Link href="/training" style={{ color: "var(--gold)" }}>Train one first.</Link>
+	            </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {models.map((m) => {
-                const selected = selectedModelIds.includes(m.id);
+	              {models.map((m) => {
+	                const compatible = compatibleModelIds.has(m.id);
+	                const selected = selectedModelIds.includes(m.id);
                 const f1 = (m.metrics as { val?: { macro_f1?: number } })?.val?.macro_f1;
                 return (
-                  <button
-                    key={m.id}
-                    onClick={() => toggleModel(m.id)}
-                    style={{
+	                  <button
+	                    key={m.id}
+	                    onClick={() => toggleModel(m.id)}
+	                    disabled={!compatible}
+	                    title={compatible ? "Compatible with selected dataset" : "Trained on a different dataset"}
+	                    style={{
                       textAlign: "left",
                       padding: "14px 16px",
-                      border: `1px solid ${selected ? "var(--gold)" : "var(--border-dim)"}`,
+	                      border: `1px solid ${selected ? "var(--gold)" : compatible ? "var(--border-dim)" : "var(--border)"}`,
                       borderRadius: "8px",
-                      background: selected ? "var(--gold-faint)" : "var(--bg-surface)",
-                      cursor: "pointer",
+	                      background: selected ? "var(--gold-faint)" : compatible ? "var(--bg-surface)" : "var(--bg-base)",
+	                      cursor: compatible ? "pointer" : "not-allowed",
+	                      opacity: compatible ? 1 : 0.6,
                       display: "flex",
                       alignItems: "flex-start",
                       gap: "12px",
@@ -511,12 +619,13 @@ export default function NewAnalysisPage() {
                       {selected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 700 }}>✓</span>}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: "13px", color: "var(--text-primary)" }}>
+	                      <div style={{ fontWeight: 500, fontSize: "13px", color: compatible ? "var(--text-primary)" : "var(--text-tertiary)" }}>
                         {m.name}
                       </div>
                       <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "3px" }}>
                         {TASK_LABELS[m.task] ?? m.task} · {m.model_type} · v{m.version}
                         {f1 != null && ` · F1 ${(f1 * 100).toFixed(1)}%`}
+                        {!compatible && " · trained on a different dataset"}
                       </div>
                     </div>
                   </button>
@@ -636,7 +745,7 @@ export default function NewAnalysisPage() {
                     style={{
                       padding: "6px 12px",
                       borderBottom: idx < datasetColumns.length - 1 ? "1px solid var(--border-dim)" : "none",
-                      background: columnRoles[col] === "text_feedback" ? "var(--gold-faint)" : "transparent",
+                      background: columnRoles[col] === "text" ? "var(--gold-faint)" : "transparent",
                     }}
                   >
                     <span style={{ flex: 1, fontSize: "12px", color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)", paddingRight: "8px", wordBreak: "break-all" }}>
@@ -659,7 +768,7 @@ export default function NewAnalysisPage() {
               <div style={{ marginTop: "6px", fontSize: "11px", color: "var(--text-tertiary)", fontFamily: "var(--font-jetbrains)" }}>
                 Text:{" "}
                 <span style={{ color: textCol ? "var(--success)" : "var(--error, #ef4444)", fontWeight: 600 }}>
-                  {textCol || "none — assign text_feedback role to a column"}
+                  {textCol || "none — assign text role to a column"}
                 </span>
               </div>
             </div>

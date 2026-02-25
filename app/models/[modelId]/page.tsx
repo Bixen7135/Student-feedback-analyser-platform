@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   fetchModelDetail,
   fetchModelVersions,
@@ -281,6 +282,18 @@ export default function ModelDetailPage({
                 </span>
               </div>
               <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                <Link
+                  href={`/analyses/new?model_id=${model.id}`}
+                  style={{
+                    ...btnBase,
+                    background: "var(--gold-faint)",
+                    color: "var(--gold)",
+                    border: "1px solid var(--gold-muted)",
+                    textDecoration: "none",
+                  }}
+                >
+                  Analyze with this Model
+                </Link>
                 <button
                   onClick={() => setEditing(true)}
                   style={{ ...btnBase, background: "var(--bg-elevated)", color: "var(--text-secondary)" }}

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_model_registry
@@ -117,6 +118,35 @@ async def get_model(
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
     return ModelResponse(**model.model_dump())
+
+
+@router.get("/{model_id}/model-card")
+async def get_model_card(
+    model_id: str,
+    registry: ModelRegistry = Depends(get_model_registry),
+):
+    """Download the generated markdown model card for a registry model."""
+    model = registry.get_model(model_id)
+    if model is None:
+        raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
+
+    card_path = (
+        Path(model.storage_path).parent
+        / "reports"
+        / "model_cards"
+        / f"{model.task}_{model.model_type}_model_card.md"
+    )
+    if not card_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model card not found for model: {model_id}",
+        )
+
+    return FileResponse(
+        card_path,
+        media_type="text/markdown",
+        filename=card_path.name,
+    )
 
 
 @router.get("/{model_id}/versions", response_model=list[ModelResponse])

@@ -77,6 +77,7 @@ class ModelMeta(BaseModel):
     storage_path: str = ""
     run_id: str | None = None
     base_model_id: str | None = None  # set when fine-tuned from an existing model
+    job_id: str | None = None          # training job that produced this model
 
 
 class AnalysisRunMeta(BaseModel):
@@ -91,7 +92,7 @@ class AnalysisRunMeta(BaseModel):
     model_ids: list[str] = Field(default_factory=list)
     created_at: str
     status: str = "pending"
-    run_id: str = ""
+    pipeline_run_id: str = ""
     result_summary: dict = Field(default_factory=dict)
 
 

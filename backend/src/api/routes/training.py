@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.api.dependencies import get_dataset_manager, get_model_registry
+from src.api.dependencies import get_dataset_manager, get_model_registry, get_db
 from src.training import runner as training_runner
 from src.training.config import TrainingConfig
 
@@ -78,6 +78,7 @@ class TrainingJobResponse(BaseModel):
     model_version: int | None
     metrics: dict | None
     config: dict | None
+    psychometrics_warning: str | None = None
 
 
 class TrainingListResponse(BaseModel):
@@ -96,6 +97,7 @@ async def start_training(
     background_tasks: BackgroundTasks,
     dataset_manager=Depends(get_dataset_manager),
     model_registry=Depends(get_model_registry),
+    db=Depends(get_db),
 ):
     """Launch a training job in the background.
 
@@ -107,6 +109,15 @@ async def start_training(
         raise HTTPException(
             status_code=404, detail=f"Dataset not found: {body.dataset_id}"
         )
+
+    has_psychometrics = db.fetchone(
+        "SELECT id FROM pipeline_runs WHERE dataset_id = ? AND status = 'completed' LIMIT 1",
+        (body.dataset_id,),
+    )
+    psychometrics_warning = None if has_psychometrics else (
+        "No completed pipeline run found for this dataset. "
+        "Psychometrics has not been validated. See Scientific Spec."
+    )
 
     job_id = f"job_{uuid.uuid4().hex[:16]}"
 
@@ -135,6 +146,7 @@ async def start_training(
         seed=body.seed,
         name=body.name,
         base_model_id=body.base_model_id,
+        db=db,
     )
 
     background_tasks.add_task(
@@ -152,22 +164,20 @@ async def start_training(
         seed=body.seed,
         name=body.name,
         base_model_id=body.base_model_id,
+        db=db,
     )
 
-    return TrainingJobResponse(**job)
+    return TrainingJobResponse(**job, psychometrics_warning=psychometrics_warning)
 
 
 @router.get("/", response_model=TrainingListResponse)
 async def list_training_jobs(
     task: str | None = Query(None),
     status: str | None = Query(None),
+    db=Depends(get_db),
 ):
-    """List all training jobs (most recent first)."""
-    jobs = training_runner.list_jobs()
-    if task:
-        jobs = [j for j in jobs if j["task"] == task]
-    if status:
-        jobs = [j for j in jobs if j["status"] == status]
+    """List all training jobs (most recent first, DB-backed)."""
+    jobs = training_runner.list_jobs_from_db(db=db, task=task, status=status)
     return TrainingListResponse(
         jobs=[TrainingJobResponse(**j) for j in jobs],
         total=len(jobs),
@@ -175,9 +185,13 @@ async def list_training_jobs(
 
 
 @router.get("/{job_id}/status", response_model=TrainingJobResponse)
-async def get_training_status(job_id: str):
+async def get_training_status(job_id: str, db=Depends(get_db)):
     """Poll the status of a training job."""
     job = training_runner.get_job(job_id)
+    if job is None:
+        # Fall back to DB for jobs that survived a restart
+        db_jobs = training_runner.list_jobs_from_db(db=db)
+        job = next((j for j in db_jobs if j["job_id"] == job_id), None)
     if job is None:
         raise HTTPException(
             status_code=404, detail=f"Training job not found: {job_id}"
@@ -186,12 +200,15 @@ async def get_training_status(job_id: str):
 
 
 @router.get("/{job_id}/result", response_model=TrainingJobResponse)
-async def get_training_result(job_id: str):
+async def get_training_result(job_id: str, db=Depends(get_db)):
     """Get training result including metrics and registered model info.
 
     Returns 409 if the job has not yet completed or failed.
     """
     job = training_runner.get_job(job_id)
+    if job is None:
+        db_jobs = training_runner.list_jobs_from_db(db=db)
+        job = next((j for j in db_jobs if j["job_id"] == job_id), None)
     if job is None:
         raise HTTPException(
             status_code=404, detail=f"Training job not found: {job_id}"

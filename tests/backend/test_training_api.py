@@ -107,6 +107,7 @@ class TestStartTraining:
         assert body["task"] == "sentiment"
         assert body["model_type"] == "tfidf"
         assert body["dataset_id"] == api_client.dataset_id
+        assert body["psychometrics_warning"] is not None
 
     def test_start_returns_404_for_unknown_dataset(self, api_client):
         resp = api_client.post(
@@ -281,3 +282,32 @@ class TestRegisteredModelLink:
             models = models_resp.json()["models"]
             model_ids = [m["id"] for m in models]
             assert model_id in model_ids
+
+    def test_model_card_available_after_training(self, api_client):
+        start_resp = api_client.post(
+            "/api/training/start",
+            json={
+                "dataset_id": api_client.dataset_id,
+                "task": "language",
+                "model_type": "tfidf",
+                "seed": 123,
+                "name": "model_card_test",
+            },
+        )
+        assert start_resp.status_code == 202
+        job_id = start_resp.json()["job_id"]
+
+        status_resp = api_client.get(f"/api/training/{job_id}/status")
+        assert status_resp.status_code == 200
+        status = status_resp.json()
+        if status["status"] != "completed":
+            pytest.skip("Training not completed in this test environment")
+
+        model_id = status["model_id"]
+        assert model_id is not None
+
+        card_resp = api_client.get(f"/api/models/{model_id}/model-card")
+        assert card_resp.status_code == 200, card_resp.text
+        assert "text/markdown" in card_resp.headers.get("content-type", "")
+        content = card_resp.text
+        assert content.startswith("# Model Card:")

@@ -4,11 +4,14 @@ from __future__ import annotations
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import orjson
 
 from src.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from src.storage.database import Database
 
 log = get_logger(__name__)
 
@@ -51,6 +54,7 @@ class RunManager:
         dataset_version: int | None = None,
         branch_id: str | None = None,
         name: str | None = None,
+        db: "Database | None" = None,
     ) -> str:
         """Create a new run directory and write initial metadata. Returns run_id."""
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
@@ -63,12 +67,14 @@ class RunManager:
                     "contradiction", "evaluation", "reports"]:
             (run_dir / sub).mkdir(exist_ok=True)
 
+        created_at = _utcnow()
+        git_commit = _get_git_commit()
         metadata: dict[str, Any] = {
             "run_id": run_id,
-            "created_at": _utcnow(),
+            "created_at": created_at,
             "config_hash": config_hash,
             "data_snapshot_id": data_snapshot_id,
-            "git_commit": _get_git_commit(),
+            "git_commit": git_commit,
             "random_seed": random_seed,
             "system_info": system_info,
             "stages": {},
@@ -80,11 +86,54 @@ class RunManager:
         self._write_json(run_dir / "metadata.json", metadata)
         self._write_json(run_dir / "artifact_manifest.json", {
             "run_id": run_id,
-            "created_at": _utcnow(),
+            "created_at": created_at,
             "artifacts": [],
         })
+
+        if db is not None:
+            try:
+                db.execute(
+                    """INSERT OR IGNORE INTO pipeline_runs
+                    (id, dataset_id, dataset_version, branch_id, config_hash,
+                     data_snapshot_id, random_seed, status, created_at, git_commit, system_info)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)""",
+                    (
+                        run_id, dataset_id, dataset_version, branch_id,
+                        config_hash, data_snapshot_id, random_seed,
+                        created_at, git_commit,
+                        orjson.dumps(system_info).decode(),
+                    ),
+                )
+                db.commit()
+            except Exception:
+                log.warning("pipeline_run_db_insert_failed", run_id=run_id)
+
         log.info("run_created", run_id=run_id, run_dir=str(run_dir))
         return run_id
+
+    def complete_run(self, run_id: str, db: "Database | None" = None) -> None:
+        """Mark a pipeline run as completed in the DB."""
+        if db is not None:
+            try:
+                db.execute(
+                    "UPDATE pipeline_runs SET status = 'completed', completed_at = ? WHERE id = ?",
+                    (_utcnow(), run_id),
+                )
+                db.commit()
+            except Exception:
+                log.warning("pipeline_run_db_complete_failed", run_id=run_id)
+
+    def fail_run(self, run_id: str, db: "Database | None" = None) -> None:
+        """Mark a pipeline run as failed in the DB."""
+        if db is not None:
+            try:
+                db.execute(
+                    "UPDATE pipeline_runs SET status = 'failed', completed_at = ? WHERE id = ?",
+                    (_utcnow(), run_id),
+                )
+                db.commit()
+            except Exception:
+                log.warning("pipeline_run_db_fail_failed", run_id=run_id)
 
     # ------------------------------------------------------------------
     # Stage management

@@ -129,6 +129,7 @@ class TestStartAnalysis:
         assert body["dataset_id"] == api_client.dataset_id
         assert api_client.model_id in body["model_ids"]
         assert body["status"] in ("pending", "running", "completed")
+        assert body["psychometrics_warning"] is not None
         # Store for subsequent tests
         api_client.analysis_id = body["job_id"]  # type: ignore[attr-defined]
 
@@ -161,6 +162,47 @@ class TestStartAnalysis:
             },
         )
         assert resp.status_code == 422  # Pydantic validation
+
+    def test_start_422_for_incompatible_model_dataset(self, api_client, tmp_path):
+        """Model trained on another dataset should be rejected with 422."""
+        other_csv = tmp_path / "other_dataset.csv"
+        _make_labelled_csv(other_csv, n_per_class=8)
+        with open(other_csv, "rb") as f:
+            upload_resp = api_client.post(
+                "/api/datasets/upload",
+                files={"file": ("other_dataset.csv", f, "text/csv")},
+                data={"name": "analysis_other_ds"},
+            )
+        assert upload_resp.status_code == 200, upload_resp.text
+        other_dataset_id = upload_resp.json()["id"]
+
+        train_resp = api_client.post(
+            "/api/training/start",
+            json={
+                "dataset_id": other_dataset_id,
+                "task": "sentiment",
+                "model_type": "tfidf",
+                "seed": 42,
+            },
+        )
+        assert train_resp.status_code == 202, train_resp.text
+        other_model_id = train_resp.json().get("model_id")
+        if not other_model_id:
+            status = api_client.get(
+                f"/api/training/{train_resp.json()['job_id']}/status"
+            ).json()
+            other_model_id = status.get("model_id")
+        assert other_model_id, "Expected second dataset model to be registered"
+
+        incompatible_resp = api_client.post(
+            "/api/analyses",
+            json={
+                "dataset_id": api_client.dataset_id,
+                "model_ids": [other_model_id],
+            },
+        )
+        assert incompatible_resp.status_code == 422
+        assert "incompatible" in incompatible_resp.json()["detail"].lower()
 
     def test_start_with_metadata(self, api_client):
         resp = api_client.post(

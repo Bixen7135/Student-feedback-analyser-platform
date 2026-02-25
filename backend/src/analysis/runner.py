@@ -297,11 +297,12 @@ def _upsert_analysis_run(
     status: str,
     result_summary: dict | None = None,
     branch_id: str | None = None,
+    pipeline_run_id: str | None = None,
 ) -> None:
     db.execute(
         """INSERT OR REPLACE INTO analysis_runs
         (id, name, description, tags, dataset_id, dataset_version, model_ids,
-         created_at, status, run_id, result_summary, comments, branch_id)
+         created_at, status, pipeline_run_id, result_summary, comments, branch_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)""",
         (
             analysis_id,
@@ -313,11 +314,18 @@ def _upsert_analysis_run(
             orjson.dumps(model_ids).decode(),
             _utcnow(),
             status,
-            analysis_id,  # run_id = analysis_id (used to find artifacts)
+            pipeline_run_id or "",  # pipeline_run_id links to a pipeline run if spawned from one
             orjson.dumps(result_summary or {}).decode(),
             branch_id,
         ),
     )
+    # Populate normalized model-ref table (INSERT OR IGNORE is idempotent)
+    for mid in model_ids:
+        if mid:
+            db.execute(
+                "INSERT OR IGNORE INTO analysis_model_refs (analysis_id, model_id) VALUES (?, ?)",
+                (analysis_id, mid),
+            )
     db.commit()
 
 
@@ -354,6 +362,7 @@ def create_job(
     tags: list[str],
     dataset_version: int | None,
     branch_id: str | None = None,
+    db: Database | None = None,
 ) -> dict[str, Any]:
     job: dict[str, Any] = {
         "job_id": job_id,
@@ -372,6 +381,20 @@ def create_job(
     }
     with _jobs_lock:
         _jobs[job_id] = job
+    # Persist immediately so the analysis is visible even before the background thread starts
+    if db is not None:
+        _upsert_analysis_run(
+            db=db,
+            analysis_id=job_id,
+            name=name,
+            description=description,
+            tags=tags,
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            model_ids=model_ids,
+            status="pending",
+            branch_id=branch_id,
+        )
     return job
 
 
@@ -474,9 +497,9 @@ def list_analyses_from_db(
         conditions.append("status = ?")
         params.append(status)
     if model_id:
-        # model_ids is a JSON array string — use LIKE for simple containment check
-        conditions.append("model_ids LIKE ?")
-        params.append(f"%{model_id}%")
+        # Use normalized table for exact, reliable model_id lookups
+        conditions.append("id IN (SELECT analysis_id FROM analysis_model_refs WHERE model_id = ?)")
+        params.append(model_id)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     valid_sorts = {"created_at", "name", "status"}
@@ -509,6 +532,9 @@ def delete_analysis_from_db(db: Database, analysis_id: str) -> bool:
     """Delete analysis metadata from SQLite. Returns True if deleted."""
     result = db.execute(
         "DELETE FROM analysis_runs WHERE id = ?", (analysis_id,)
+    )
+    db.execute(
+        "DELETE FROM analysis_model_refs WHERE analysis_id = ?", (analysis_id,)
     )
     db.commit()
     return result.rowcount > 0

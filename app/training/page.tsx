@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   fetchDatasets,
   fetchDatasetSchema,
+  fetchColumnRoles,
   fetchDatasetVersions,
   fetchDatasetBranches,
   fetchModels,
@@ -28,7 +30,7 @@ const TASK_LABELS: Record<Task, string> = {
 
 const TASK_LABEL_COLS: Record<Task, string> = {
   language: "language",
-  sentiment: "sentiment_class",
+  sentiment: "sentiment",
   detail_level: "detail_level",
 };
 
@@ -47,8 +49,8 @@ const STEP_LABELS = [
 // All known system field names that a column can be mapped to.
 const SYSTEM_ROLES: { value: string; label: string }[] = [
   { value: "", label: "(not used)" },
-  { value: "text_feedback", label: "text_feedback — feedback text" },
-  { value: "sentiment_class", label: "sentiment_class — sentiment label" },
+  { value: "text", label: "text — feedback text" },
+  { value: "sentiment", label: "sentiment — sentiment label" },
   { value: "language", label: "language — language label" },
   { value: "detail_level", label: "detail_level — detail level label" },
   { value: "survey_id", label: "survey_id — record ID" },
@@ -64,6 +66,7 @@ const SYSTEM_ROLE_VALUES = new Set(
 
 export default function TrainingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Wizard state
   const [step, setStep] = useState(0);
@@ -98,14 +101,29 @@ export default function TrainingPage() {
   // Launch state
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [queryPrefillApplied, setQueryPrefillApplied] = useState(false);
+
+  const selectedVersionMeta =
+    selectedVersion == null
+      ? dsVersions[0] ?? null
+      : dsVersions.find((v) => v.version === selectedVersion) ?? null;
+  const selectedVersionId = selectedVersionMeta?.id;
 
   // Derive text_col and label_col from the mapping table
   const textCol =
-    Object.entries(columnRoles).find(([, r]) => r === "text_feedback")?.[0] ?? "";
+    Object.entries(columnRoles).find(([, r]) => r === "text")?.[0] ?? "";
   const labelCol =
     Object.entries(columnRoles).find(
       ([, r]) => r === TASK_LABEL_COLS[selectedTask]
     )?.[0] ?? "";
+
+  function inferFallbackRole(columnName: string): string {
+    const normalized = columnName.trim().toLowerCase();
+    if (SYSTEM_ROLE_VALUES.has(normalized)) return normalized;
+    if (normalized === "text_feedback") return "text";
+    if (normalized === "sentiment_class") return "sentiment";
+    return "";
+  }
 
   useEffect(() => {
     fetchDatasets({ sort: "created_at", order: "desc", per_page: 100 })
@@ -118,6 +136,18 @@ export default function TrainingPage() {
         setDatasetsLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (queryPrefillApplied || datasets.length === 0) return;
+    const datasetIdFromQuery = searchParams.get("dataset_id");
+    if (!datasetIdFromQuery) {
+      setQueryPrefillApplied(true);
+      return;
+    }
+    const ds = datasets.find((d) => d.id === datasetIdFromQuery) ?? null;
+    if (ds) setSelectedDataset(ds);
+    setQueryPrefillApplied(true);
+  }, [datasets, queryPrefillApplied, searchParams]);
 
   // Fetch versions when dataset changes; auto-select latest
   useEffect(() => {
@@ -151,27 +181,41 @@ export default function TrainingPage() {
       .catch(() => {});
   }, [selectedDataset]);
 
-  // Fetch dataset schema and auto-populate column roles whenever dataset changes
+  // Fetch dataset schema and auto-populate column roles whenever dataset/version changes.
   useEffect(() => {
     if (!selectedDataset) {
       setDatasetColumns([]);
       setColumnRoles({});
       return;
     }
-    fetchDatasetSchema(selectedDataset.id)
+    fetchDatasetSchema(
+      selectedDataset.id,
+      selectedVersionId ? { version_id: selectedVersionId } : undefined
+    )
       .then((res) => {
         const cols = res.columns.map((c: { name: string }) => c.name);
         setDatasetColumns(cols);
-        // Auto-assign role = column name when it matches a known system role,
-        // otherwise leave it unmapped (not used).
-        const auto: Record<string, string> = {};
-        for (const col of cols) {
-          auto[col] = SYSTEM_ROLE_VALUES.has(col) ? col : "";
-        }
-        setColumnRoles(auto);
+        return fetchColumnRoles(
+          selectedDataset.id,
+          selectedVersionId ? { version_id: selectedVersionId } : undefined
+        )
+          .then(({ column_roles }) => {
+            const mapped: Record<string, string> = {};
+            for (const col of cols) {
+              mapped[col] = column_roles[col] ?? inferFallbackRole(col);
+            }
+            setColumnRoles(mapped);
+          })
+          .catch(() => {
+            const auto: Record<string, string> = {};
+            for (const col of cols) {
+              auto[col] = inferFallbackRole(col);
+            }
+            setColumnRoles(auto);
+          });
       })
       .catch(() => {/* schema fetch is best-effort */});
-  }, [selectedDataset]);
+  }, [selectedDataset, selectedVersionId]);
 
   // Fetch models available for fine-tuning (same task + model type)
   useEffect(() => {
@@ -407,12 +451,12 @@ export default function TrainingPage() {
               ) : datasets.length === 0 ? (
                 <p style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
                   No datasets uploaded yet.{" "}
-                  <a
+                  <Link
                     href="/datasets/upload"
                     style={{ color: "var(--gold)", textDecoration: "none" }}
                   >
                     Upload one first.
-                  </a>
+                  </Link>
                 </p>
               ) : (
                 <select
@@ -825,7 +869,7 @@ export default function TrainingPage() {
                           ? "1px solid var(--border-dim)"
                           : "none",
                       background:
-                        columnRoles[col] === "text_feedback" ||
+                        columnRoles[col] === "text" ||
                         columnRoles[col] === TASK_LABEL_COLS[selectedTask]
                           ? "var(--gold-faint)"
                           : "transparent",
@@ -890,7 +934,7 @@ export default function TrainingPage() {
                       fontWeight: 600,
                     }}
                   >
-                    {textCol || "none — assign text_feedback role"}
+                    {textCol || "none — assign text role"}
                   </span>
                 </span>
                 <span>
@@ -1048,3 +1092,4 @@ export default function TrainingPage() {
     </div>
   );
 }
+

@@ -88,9 +88,9 @@ const navItems: NavItem[] = [
 ];
 
 const STATUS_CONFIG: Record<ApiStatus, { label: string; color: string; pulse: boolean }> = {
-  connecting: { label: "connecting…", color: "var(--warning, #f59e0b)", pulse: true },
-  online:     { label: "api · port 8000", color: "var(--success)",          pulse: false },
-  offline:    { label: "api · offline",   color: "var(--error, #ef4444)",   pulse: false },
+  connecting: { label: "connecting...", color: "var(--warning, #f59e0b)", pulse: true },
+  online: { label: "api | port 8000", color: "var(--success)", pulse: false },
+  offline: { label: "api | offline", color: "var(--error, #ef4444)", pulse: false },
 };
 
 export function Sidebar() {
@@ -102,7 +102,9 @@ export function Sidebar() {
 
     async function check() {
       try {
-        const res = await fetch("http://localhost:8000/health", { signal: AbortSignal.timeout(3000) });
+        const res = await fetch("http://localhost:8000/health", {
+          signal: AbortSignal.timeout(3000),
+        });
         if (!cancelled) setApiStatus(res.ok ? "online" : "offline");
       } catch {
         if (!cancelled) setApiStatus("offline");
@@ -111,7 +113,10 @@ export function Sidebar() {
 
     check();
     const id = setInterval(check, 15_000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   return (
@@ -124,7 +129,6 @@ export function Sidebar() {
         borderRight: "1px solid var(--border-dim)",
       }}
     >
-      {/* Brand */}
       <div
         className="flex items-center gap-3 px-5"
         style={{
@@ -178,7 +182,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 flex flex-col" style={{ padding: "16px 12px 8px" }}>
         <div
           style={{
@@ -203,10 +206,8 @@ export function Sidebar() {
                   (pathname.startsWith("/runs/") &&
                     !pathname.startsWith("/runs/new"))
                 : item.href === "/datasets"
-                ? pathname === "/datasets" ||
-                  pathname.startsWith("/datasets/")
-                : pathname === item.href ||
-                  pathname.startsWith(item.href + "/");
+                ? pathname === "/datasets" || pathname.startsWith("/datasets/")
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
@@ -232,7 +233,6 @@ export function Sidebar() {
         </div>
       </nav>
 
-      {/* Footer status */}
       <div
         style={{
           padding: "14px 20px",
@@ -267,7 +267,7 @@ export function Sidebar() {
             color: "var(--text-tertiary)",
           }}
         >
-          RU · KZ · multilingual
+          RU | KZ | multilingual
         </div>
       </div>
     </aside>

@@ -5,6 +5,7 @@ Usage: uv run python -m src.cli <command> [options]
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import click
@@ -42,12 +43,22 @@ def main(log_level: str) -> None:
 def cmd_run_full(data: str, config: str, factor_config: str, runs_dir: str, seed: int) -> None:
     """Run the full analysis pipeline end-to-end."""
     from src.pipeline import run_full_pipeline
+    from src.storage.database import Database
+    from src.storage.model_registry import ModelRegistry
+
+    db_path = Path(os.environ.get("SFAP_DB_PATH", str(_BACKEND / "data" / "platform.db")))
+    models_dir = Path(os.environ.get("SFAP_MODELS_DIR", str(_BACKEND / "models")))
+    db = Database(db_path)
+    model_registry = ModelRegistry(db, models_dir)
+
     run_id = run_full_pipeline(
         data_path=Path(data),
         config_path=Path(config),
         factor_structure_path=Path(factor_config),
         runs_dir=Path(runs_dir),
         seed=seed,
+        model_registry=model_registry,
+        db=db,
     )
     click.echo(f"Pipeline complete. Run ID: {run_id}")
 

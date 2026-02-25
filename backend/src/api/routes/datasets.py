@@ -343,17 +343,53 @@ async def get_dataset_preview(
 @router.get("/{dataset_id}/schema")
 async def get_dataset_schema(
     dataset_id: str,
+    version_id: str | None = Query(None, description="Version UUID; omit for current version"),
+    version: int | None = Query(None, description="Version number; optional alternative to version_id"),
     mgr: DatasetManager = Depends(get_dataset_manager),
 ):
     """Get column schema information for a dataset."""
     try:
-        schema = mgr.get_dataset_schema(dataset_id)
+        resolved_version = version
+        if version_id and resolved_version is None:
+            row = mgr.db.fetchone(
+                """SELECT version FROM dataset_versions
+                   WHERE id = ? AND dataset_id = ? AND is_deleted = 0""",
+                (version_id, dataset_id),
+            )
+            if row is None:
+                raise ValueError(f"Dataset version not found: {version_id}")
+            resolved_version = int(row["version"])
+
+        if version_id is None and resolved_version is None:
+            schema = mgr.get_dataset_schema(dataset_id)
+        else:
+            df = mgr.get_dataframe(dataset_id, version=resolved_version)
+            schema = []
+            for col in df.columns:
+                sample_values = (
+                    df[col].dropna().head(5).astype(str).tolist()
+                    if col in df.columns
+                    else []
+                )
+                schema.append({
+                    "name": col,
+                    "dtype": str(df[col].dtype),
+                    "n_unique": int(df[col].nunique()),
+                    "n_null": int(df[col].isna().sum()),
+                    "sample_values": sample_values,
+                })
+
         cols = []
         for s in schema:
-            d = s.model_dump()
+            d = s.model_dump() if hasattr(s, "model_dump") else dict(s)
             d["name"] = COLUMN_MAP.get(d["name"].strip(), d["name"].strip())
             cols.append(d)
-        return {"dataset_id": dataset_id, "columns": cols}
+        return {
+            "dataset_id": dataset_id,
+            "version_id": version_id,
+            "version": resolved_version,
+            "columns": cols,
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -362,12 +398,18 @@ async def get_dataset_schema(
 async def get_column_roles(
     dataset_id: str,
     version_id: str | None = Query(None, description="Version UUID; omit for current version"),
+    version: int | None = Query(None, description="Version number; optional alternative to version_id"),
     mgr: DatasetManager = Depends(get_dataset_manager),
 ):
     """Get column role assignments for a dataset version."""
     try:
-        roles = mgr.get_column_roles(dataset_id, version_id=version_id)
-        return {"dataset_id": dataset_id, "version_id": version_id, "column_roles": roles}
+        roles = mgr.get_column_roles(dataset_id, version_id=version_id, version=version)
+        return {
+            "dataset_id": dataset_id,
+            "version_id": version_id,
+            "version": version,
+            "column_roles": roles,
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

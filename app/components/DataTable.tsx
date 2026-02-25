@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 interface DataTableProps {
+  storageKey?: string;
   columns: string[];
   rows: string[][];
   totalRows: number;
@@ -26,7 +27,12 @@ interface CellRef {
   colIdx: number;
 }
 
+const MIN_COLUMN_WIDTH = 80;
+const MIN_ROW_HEIGHT = 26;
+const MAX_ROW_HEIGHT = 240;
+
 export function DataTable({
+  storageKey,
   columns,
   rows,
   totalRows,
@@ -47,12 +53,32 @@ export function DataTable({
 
   // Page jump input (controlled locally, syncs when offset changes)
   const [pageInput, setPageInput] = useState(String(currentPage));
-  useEffect(() => { setPageInput(String(currentPage)); }, [offset]);
+  useEffect(() => { setPageInput(String(currentPage)); }, [currentPage]);
+
+  // Clamp pagination when page size or total rows change.
+  useEffect(() => {
+    if (totalRows <= 0 && offset !== 0) {
+      onPageChange(0);
+      return;
+    }
+    if (totalRows <= 0) return;
+    const maxOffset = Math.max(0, (totalPages - 1) * limit);
+    if (offset > maxOffset) {
+      onPageChange(maxOffset);
+    }
+  }, [offset, totalRows, totalPages, limit, onPageChange]);
 
   // Cell editing
   const [editingCell, setEditingCell] = useState<CellRef | null>(null);
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [activeCell, setActiveCell] = useState<CellRef | null>(null);
+  const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  const [columnWidths, setColumnWidths] = useState<Map<number, number>>(new Map());
+  const [rowHeights, setRowHeights] = useState<Map<number, number>>(new Map());
+  const [dragCursor, setDragCursor] = useState<"col-resize" | "row-resize" | null>(null);
+  const resizingColumnRef = useRef<{ colIdx: number; startX: number; startWidth: number } | null>(null);
+  const resizingRowRef = useRef<{ absRowIdx: number; startY: number; startHeight: number } | null>(null);
 
   // Column header editing
   const [editingHeader, setEditingHeader] = useState<number | null>(null);
@@ -96,6 +122,164 @@ export function DataTable({
   useEffect(() => {
     if (editingCell) setTimeout(() => editInputRef.current?.focus(), 20);
   }, [editingCell]);
+
+  useEffect(() => {
+    const handlePointerMove = (e: MouseEvent) => {
+      if (resizingColumnRef.current) {
+        const { colIdx, startX, startWidth } = resizingColumnRef.current;
+        const nextWidth = Math.max(MIN_COLUMN_WIDTH, startWidth + (e.clientX - startX));
+        setColumnWidths((prev) => {
+          const next = new Map(prev);
+          next.set(colIdx, nextWidth);
+          return next;
+        });
+      }
+      if (resizingRowRef.current) {
+        const { absRowIdx, startY, startHeight } = resizingRowRef.current;
+        const nextHeight = Math.max(
+          MIN_ROW_HEIGHT,
+          Math.min(MAX_ROW_HEIGHT, startHeight + (e.clientY - startY))
+        );
+        setRowHeights((prev) => {
+          const next = new Map(prev);
+          next.set(absRowIdx, nextHeight);
+          return next;
+        });
+      }
+    };
+
+    const handlePointerUp = () => {
+      if (!resizingColumnRef.current && !resizingRowRef.current) return;
+      resizingColumnRef.current = null;
+      resizingRowRef.current = null;
+      setDragCursor(null);
+    };
+
+    window.addEventListener("mousemove", handlePointerMove);
+    window.addEventListener("mouseup", handlePointerUp);
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+    };
+  }, []);
+
+  // Restore persisted column widths for this table instance.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = window.localStorage.getItem(`datatable:column-widths:${storageKey}`);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, number>;
+      const restored = new Map<number, number>();
+      columns.forEach((col, colIdx) => {
+        const width = saved[col];
+        if (typeof width === "number" && Number.isFinite(width) && width >= MIN_COLUMN_WIDTH) {
+          restored.set(colIdx, width);
+        }
+      });
+      setColumnWidths(restored);
+    } catch {
+      // ignore invalid local storage value
+    }
+  }, [storageKey, columns]);
+
+  // Persist column widths whenever user resizes columns.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const serialized: Record<string, number> = {};
+      columnWidths.forEach((width, colIdx) => {
+        const col = columns[colIdx];
+        if (col !== undefined) {
+          serialized[col] = Math.round(width);
+        }
+      });
+      window.localStorage.setItem(
+        `datatable:column-widths:${storageKey}`,
+        JSON.stringify(serialized)
+      );
+    } catch {
+      // ignore storage failures (private mode / quota)
+    }
+  }, [storageKey, columnWidths, columns]);
+
+  // Restore persisted row heights for this table instance.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = window.localStorage.getItem(`datatable:row-heights:${storageKey}`);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, number>;
+      const restored = new Map<number, number>();
+      Object.entries(saved).forEach(([rowIdx, height]) => {
+        const absRowIdx = Number(rowIdx);
+        if (
+          Number.isInteger(absRowIdx) &&
+          typeof height === "number" &&
+          Number.isFinite(height)
+        ) {
+          restored.set(
+            absRowIdx,
+            Math.max(MIN_ROW_HEIGHT, Math.min(MAX_ROW_HEIGHT, Math.round(height)))
+          );
+        }
+      });
+      setRowHeights(restored);
+    } catch {
+      // ignore invalid local storage value
+    }
+  }, [storageKey]);
+
+  // Persist row heights whenever user resizes rows.
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const serialized: Record<string, number> = {};
+      rowHeights.forEach((height, absRowIdx) => {
+        serialized[String(absRowIdx)] = Math.round(height);
+      });
+      window.localStorage.setItem(
+        `datatable:row-heights:${storageKey}`,
+        JSON.stringify(serialized)
+      );
+    } catch {
+      // ignore storage failures (private mode / quota)
+    }
+  }, [storageKey, rowHeights]);
+
+  useEffect(() => {
+    document.body.style.userSelect = dragCursor ? "none" : "";
+    document.body.style.cursor = dragCursor ?? "";
+    return () => {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [dragCursor]);
+
+  // Keep active cell valid for current viewport and focus it for arrow navigation.
+  useEffect(() => {
+    if (rows.length === 0) {
+      setActiveCell(null);
+      return;
+    }
+    if (!activeCell) return;
+    const minAbsRow = offset;
+    const maxAbsRow = offset + rows.length - 1;
+    if (
+      activeCell.absRowIdx < minAbsRow ||
+      activeCell.absRowIdx > maxAbsRow ||
+      activeCell.colIdx < 0 ||
+      activeCell.colIdx >= columns.length
+    ) {
+      setActiveCell({ absRowIdx: minAbsRow, colIdx: 0 });
+      return;
+    }
+    const key = `${activeCell.absRowIdx}:${activeCell.colIdx}`;
+    const target = cellRefs.current.get(key);
+    if (target && document.activeElement !== editInputRef.current) {
+      target.focus();
+    }
+  }, [activeCell, rows, offset, columns.length]);
 
   // Focus header edit input
   useEffect(() => {
@@ -143,6 +327,16 @@ export function DataTable({
     setEditingCell({ absRowIdx, colIdx });
     setEditValue(pendingVal !== undefined ? pendingVal : currentVal);
   };
+
+  const moveActiveCell = useCallback((dRow: number, dCol: number) => {
+    if (rows.length === 0 || columns.length === 0) return;
+    const minAbsRow = offset;
+    const maxAbsRow = offset + rows.length - 1;
+    const start = activeCell ?? { absRowIdx: minAbsRow, colIdx: 0 };
+    const nextAbsRow = Math.max(minAbsRow, Math.min(maxAbsRow, start.absRowIdx + dRow));
+    const nextColIdx = Math.max(0, Math.min(columns.length - 1, start.colIdx + dCol));
+    setActiveCell({ absRowIdx: nextAbsRow, colIdx: nextColIdx });
+  }, [activeCell, columns.length, offset, rows.length]);
 
   // Commit cell edit
   const commitEdit = () => {
@@ -223,6 +417,58 @@ export function DataTable({
     }
     setSelectedRows(new Set());
     setAllDocumentSelected(false);
+  };
+
+  const onTableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (editingCell) return;
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveActiveCell(-1, 0);
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveActiveCell(1, 0);
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      moveActiveCell(0, -1);
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      moveActiveCell(0, 1);
+      return;
+    }
+    if ((e.key === "Enter" || e.key === "F2") && editable && activeCell) {
+      e.preventDefault();
+      const rowIdx = activeCell.absRowIdx - offset;
+      if (rowIdx < 0 || rowIdx >= rows.length) return;
+      const row = rows[rowIdx];
+      const currentVal = getCellDisplayValue(rowIdx, activeCell.colIdx, row, pendingEdits, offset);
+      startEdit(activeCell.absRowIdx, activeCell.colIdx, currentVal);
+    }
+  };
+
+  const startColumnResize = (e: React.MouseEvent<HTMLDivElement>, colIdx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const headerCell = e.currentTarget.parentElement as HTMLTableCellElement | null;
+    const measuredWidth = headerCell?.getBoundingClientRect().width ?? MIN_COLUMN_WIDTH;
+    const startWidth = columnWidths.get(colIdx) ?? measuredWidth;
+    resizingColumnRef.current = { colIdx, startX: e.clientX, startWidth };
+    setDragCursor("col-resize");
+  };
+
+  const startRowResize = (e: React.MouseEvent<HTMLDivElement>, absRowIdx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rowElement = e.currentTarget.closest("tr");
+    const measuredHeight = rowElement?.getBoundingClientRect().height ?? MIN_ROW_HEIGHT;
+    const startHeight = rowHeights.get(absRowIdx) ?? measuredHeight;
+    resizingRowRef.current = { absRowIdx, startY: e.clientY, startHeight };
+    setDragCursor("row-resize");
   };
 
   // Replace current match
@@ -396,7 +642,11 @@ export function DataTable({
       )}
 
       {/* Table */}
-      <div style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid var(--border-dim)" }}>
+      <div
+        tabIndex={0}
+        onKeyDown={onTableKeyDown}
+        style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid var(--border-dim)", outline: "none" }}
+      >
         <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-jetbrains)", fontSize: "11px" }}>
           <thead>
             <tr>
@@ -419,6 +669,7 @@ export function DataTable({
                 const displayName = pendingName !== undefined ? pendingName : col;
                 const hasPendingRename = pendingName !== undefined && pendingName !== col;
                 const isEditingThisHeader = editingHeader === colIdx;
+                const colWidth = columnWidths.get(colIdx);
 
                 return (
                   <th
@@ -428,6 +679,10 @@ export function DataTable({
                       cursor: editable && onColumnRename ? "text" : undefined,
                       background: hasPendingRename ? "rgba(251,146,60,0.08)" : "var(--bg-elevated)",
                       borderLeft: hasPendingRename ? "2px solid rgb(251,146,60)" : undefined,
+                      position: "relative",
+                      width: colWidth ? `${colWidth}px` : undefined,
+                      minWidth: colWidth ? `${colWidth}px` : undefined,
+                      maxWidth: colWidth ? `${colWidth}px` : undefined,
                     }}
                     onDoubleClick={() => startHeaderEdit(colIdx)}
                     title={editable && onColumnRename ? "Double-click to rename column" : col}
@@ -464,6 +719,21 @@ export function DataTable({
                         {displayName}
                       </span>
                     )}
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      title="Drag to resize column"
+                      onMouseDown={(e) => startColumnResize(e, colIdx)}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        right: 0,
+                        width: "8px",
+                        height: "100%",
+                        cursor: "col-resize",
+                        zIndex: 2,
+                      }}
+                    />
                   </th>
                 );
               })}
@@ -482,6 +752,7 @@ export function DataTable({
               rows.map((row, rowIdx) => {
                 const absRowIdx = offset + rowIdx;
                 const isSelected = allDocumentSelected || selectedRows.has(absRowIdx);
+                const rowHeight = rowHeights.get(absRowIdx);
                 return (
                   <tr
                     key={rowIdx}
@@ -491,7 +762,7 @@ export function DataTable({
                     }}
                   >
                     {editable && (
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                      <td style={{ padding: "6px 8px", textAlign: "center", height: rowHeight ? `${rowHeight}px` : undefined }}>
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -500,29 +771,58 @@ export function DataTable({
                         />
                       </td>
                     )}
-                    <td style={{ padding: "6px 10px", color: "var(--text-tertiary)", fontSize: "10px" }}>
+                    <td style={{ padding: "6px 10px", color: "var(--text-tertiary)", fontSize: "10px", position: "relative", height: rowHeight ? `${rowHeight}px` : undefined, verticalAlign: "top" }}>
                       {absRowIdx + 1}
+                      <div
+                        role="separator"
+                        aria-orientation="horizontal"
+                        title="Drag to resize row"
+                        onMouseDown={(e) => startRowResize(e, absRowIdx)}
+                        style={{
+                          position: "absolute",
+                          left: "8px",
+                          right: "8px",
+                          bottom: "-2px",
+                          height: "6px",
+                          cursor: "row-resize",
+                        }}
+                      />
                     </td>
                     {row.map((cell, colIdx) => {
                       const cellKey = `${absRowIdx}:${colIdx}`;
                       const isEditing = editingCell?.absRowIdx === absRowIdx && editingCell?.colIdx === colIdx;
+                      const isActive = activeCell?.absRowIdx === absRowIdx && activeCell?.colIdx === colIdx;
                       const pendingVal = pendingEdits?.get(cellKey);
                       const displayVal = pendingVal !== undefined ? pendingVal : cell;
                       const isMatch = matchSet.has(cellKey);
                       const isCurrentMatch = currentMatchKey === cellKey;
                       const hasPending = pendingVal !== undefined && pendingVal !== cell;
+                      const colWidth = columnWidths.get(colIdx);
 
                       return (
                         <td
                           key={colIdx}
-                          onClick={() => !isEditing && startEdit(absRowIdx, colIdx, displayVal)}
+                          ref={(el) => {
+                            if (el) cellRefs.current.set(cellKey, el);
+                            else cellRefs.current.delete(cellKey);
+                          }}
+                          tabIndex={isActive ? 0 : -1}
+                          onFocus={() => setActiveCell({ absRowIdx, colIdx })}
+                          onClick={() => {
+                            setActiveCell({ absRowIdx, colIdx });
+                            if (!isEditing) startEdit(absRowIdx, colIdx, displayVal);
+                          }}
                           style={{
                             padding: isEditing ? "2px 4px" : "6px 10px",
                             color: "var(--text-secondary)",
-                            maxWidth: "300px",
+                            width: colWidth ? `${colWidth}px` : undefined,
+                            minWidth: colWidth ? `${colWidth}px` : undefined,
+                            maxWidth: colWidth ? `${colWidth}px` : "300px",
                             overflow: isEditing ? "visible" : "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: isEditing ? "normal" : "nowrap",
+                            height: rowHeight ? `${rowHeight}px` : undefined,
+                            verticalAlign: "top",
                             cursor: editable ? "text" : "default",
                             background: isCurrentMatch
                               ? "rgba(234,179,8,0.35)"
@@ -532,7 +832,9 @@ export function DataTable({
                               ? "rgba(251,146,60,0.08)"
                               : undefined,
                             borderLeft: hasPending ? "2px solid rgb(251,146,60)" : undefined,
+                            boxShadow: isActive ? "inset 0 0 0 1px var(--accent)" : undefined,
                             position: "relative",
+                            outline: "none",
                           }}
                           title={isEditing ? undefined : displayVal}
                         >

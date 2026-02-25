@@ -11,13 +11,17 @@ import numpy as np
 import orjson
 import pandas as pd
 
+import orjson
+
 from src.ingest.loader import COLUMN_MAP
+from src.storage.database import Database
 from src.storage.dataset_manager import DatasetManager
 from src.storage.model_registry import ModelRegistry
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
 from src.text_tasks.base import TextClassifier
 from src.training.config import TrainingConfig
+from src.reporting.model_card import generate_model_card_for_registry_model
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -254,6 +258,7 @@ def run_training(
     seed: int = 42,
     name: str | None = None,
     base_model_id: str | None = None,
+    job_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Train a text classifier on a user dataset and auto-register in ModelRegistry.
@@ -488,6 +493,7 @@ def run_training(
         metrics=metrics,
         run_id=run_id,
         base_model_id=base_model_id,
+        job_id=job_id,
     )
 
     return {
@@ -515,7 +521,9 @@ def create_job(
     seed: int,
     name: str | None,
     base_model_id: str | None = None,
+    db: Database | None = None,
 ) -> dict[str, Any]:
+    now = _utcnow()
     job: dict[str, Any] = {
         "job_id": job_id,
         "status": "pending",
@@ -538,6 +546,21 @@ def create_job(
     }
     with _jobs_lock:
         _jobs[job_id] = job
+
+    if db is not None:
+        try:
+            db.execute(
+                """INSERT OR IGNORE INTO training_jobs
+                (id, dataset_id, dataset_version, branch_id, task, model_type, seed,
+                 name, base_model_id, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, dataset_id, dataset_version, branch_id, task, model_type,
+                 seed, name, base_model_id, "pending", now),
+            )
+            db.commit()
+        except Exception:
+            log.warning("training_job_db_insert_failed", job_id=job_id)
+
     return job
 
 
@@ -549,6 +572,89 @@ def get_job(job_id: str) -> dict[str, Any] | None:
 def list_jobs() -> list[dict[str, Any]]:
     with _jobs_lock:
         return [dict(j) for j in reversed(list(_jobs.values()))]
+
+
+def list_jobs_from_db(
+    db: Database,
+    task: str | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """List training jobs from SQLite, merging with in-memory for live running state."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if task:
+        conditions.append("task = ?")
+        params.append(task)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = db.fetchall(
+        f"SELECT * FROM training_jobs {where} ORDER BY created_at DESC",
+        tuple(params),
+    )
+
+    # Convert rows to dicts matching the in-memory job schema
+    result: list[dict[str, Any]] = []
+    with _jobs_lock:
+        mem_jobs = dict(_jobs)
+
+    for row in rows:
+        d = dict(row)
+        job_id = d["id"]
+        # Merge hot in-memory state (status may be more current for running jobs)
+        if job_id in mem_jobs:
+            mem = mem_jobs[job_id]
+            d["status"] = mem["status"]
+            d["started_at"] = mem.get("started_at") or d.get("started_at")
+            d["completed_at"] = mem.get("completed_at") or d.get("completed_at")
+            d["error"] = mem.get("error") or d.get("error")
+            d["model_id"] = mem.get("model_id") or d.get("model_id")
+        # Normalise to the expected output schema
+        metrics_raw = d.get("metrics")
+        if isinstance(metrics_raw, str):
+            try:
+                d["metrics"] = orjson.loads(metrics_raw)
+            except Exception:
+                d["metrics"] = None
+        config_raw = d.get("config")
+        if isinstance(config_raw, str):
+            try:
+                d["config"] = orjson.loads(config_raw)
+            except Exception:
+                d["config"] = None
+        result.append({
+            "job_id": job_id,
+            "status": d.get("status", "pending"),
+            "dataset_id": d.get("dataset_id", ""),
+            "dataset_version": d.get("dataset_version"),
+            "branch_id": d.get("branch_id"),
+            "task": d.get("task", ""),
+            "model_type": d.get("model_type", ""),
+            "seed": d.get("seed", 42),
+            "name": d.get("name"),
+            "base_model_id": d.get("base_model_id"),
+            "started_at": d.get("started_at"),
+            "completed_at": d.get("completed_at"),
+            "error": d.get("error"),
+            "model_id": d.get("model_id"),
+            "model_name": None,
+            "model_version": None,
+            "metrics": d.get("metrics"),
+            "config": d.get("config"),
+        })
+
+    # Append in-memory jobs not yet written to DB (e.g. created in same request)
+    db_ids = {r["job_id"] for r in result}
+    for mem in mem_jobs.values():
+        if mem["job_id"] not in db_ids:
+            if task and mem.get("task") != task:
+                continue
+            if status and mem.get("status") != status:
+                continue
+            result.append(dict(mem))
+
+    return result
 
 
 def run_job_background(
@@ -565,11 +671,23 @@ def run_job_background(
     seed: int,
     name: str | None,
     base_model_id: str | None = None,
+    db: Database | None = None,
 ) -> None:
     """Execute training synchronously in a background thread."""
+    started_at = _utcnow()
     with _jobs_lock:
         _jobs[job_id]["status"] = "running"
-        _jobs[job_id]["started_at"] = _utcnow()
+        _jobs[job_id]["started_at"] = started_at
+
+    if db is not None:
+        try:
+            db.execute(
+                "UPDATE training_jobs SET status = 'running', started_at = ? WHERE id = ?",
+                (started_at, job_id),
+            )
+            db.commit()
+        except Exception:
+            log.warning("training_job_db_update_failed", job_id=job_id, phase="running")
 
     try:
         result = run_training(
@@ -585,18 +703,60 @@ def run_job_background(
             seed=seed,
             name=name,
             base_model_id=base_model_id,
+            job_id=job_id,
         )
+        completed_at = _utcnow()
         with _jobs_lock:
             _jobs[job_id]["status"] = "completed"
-            _jobs[job_id]["completed_at"] = _utcnow()
+            _jobs[job_id]["completed_at"] = completed_at
             _jobs[job_id]["model_id"] = result["model_id"]
             _jobs[job_id]["model_name"] = result["model_name"]
             _jobs[job_id]["model_version"] = result["model_version"]
             _jobs[job_id]["metrics"] = result["metrics"]
             _jobs[job_id]["config"] = result["config"]
+
+        if db is not None:
+            try:
+                db.execute(
+                    """UPDATE training_jobs
+                    SET status = 'completed', completed_at = ?, model_id = ?,
+                        training_run_id = ?, metrics = ?
+                    WHERE id = ?""",
+                    (
+                        completed_at,
+                        result["model_id"],
+                        result["run_id"],
+                        orjson.dumps(result.get("metrics") or {}).decode(),
+                        job_id,
+                    ),
+                )
+                db.commit()
+            except Exception:
+                log.warning("training_job_db_update_failed", job_id=job_id, phase="completed")
+
+        # Generate and store a model card alongside the registered model lineage.
+        try:
+            model_meta = model_registry.get_model(result["model_id"])
+            if model_meta is not None:
+                reports_dir = Path(model_meta.storage_path).parent / "reports"
+                generate_model_card_for_registry_model(model_meta, reports_dir)
+        except Exception:
+            log.warning("model_card_generation_failed", job_id=job_id, model_id=result["model_id"])
+
     except Exception as exc:
         log.error("training_job_failed", job_id=job_id, error=str(exc))
+        failed_at = _utcnow()
         with _jobs_lock:
             _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["completed_at"] = _utcnow()
+            _jobs[job_id]["completed_at"] = failed_at
             _jobs[job_id]["error"] = str(exc)
+
+        if db is not None:
+            try:
+                db.execute(
+                    "UPDATE training_jobs SET status = 'failed', completed_at = ?, error = ? WHERE id = ?",
+                    (failed_at, str(exc), job_id),
+                )
+                db.commit()
+            except Exception:
+                log.warning("training_job_db_update_failed", job_id=job_id, phase="failed")

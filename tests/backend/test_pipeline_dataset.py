@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import numpy as np
+import orjson
 import pandas as pd
 import pytest
 
@@ -192,3 +194,180 @@ def test_create_run_without_dataset_id_succeeds(tmp_path):
     assert data["random_seed"] == 99
     assert data["dataset_id"] is None
     assert data["name"] is None
+
+
+def test_pipeline_phase3_registers_models_and_links_analysis(
+    monkeypatch,
+    tmp_path,
+    experiment_config_path,
+    factor_structure_path,
+):
+    """Full pipeline registers 6 models and writes one linked evaluation analysis row."""
+    from types import SimpleNamespace
+
+    from src.pipeline import run_full_pipeline
+    from src.storage.database import Database
+    from src.storage.model_registry import ModelRegistry
+    from src.text_tasks.base import ClassificationResult
+
+    df_raw = pd.DataFrame(
+        {
+            "text_feedback": [f"text {i}" for i in range(12)],
+            "language": ["ru", "kz", "mixed"] * 4,
+            "sentiment_class": ["positive", "neutral", "negative"] * 4,
+            "detail_level": ["short", "medium", "long"] * 4,
+        }
+    )
+
+    def _fake_run_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
+        return df.copy()
+
+    def _fake_save_preprocessed(df: pd.DataFrame, run_dir: Path) -> Path:
+        out = run_dir / "stages" / "preprocessed.parquet"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(out, index=False)
+        return out
+
+    def _fake_run_psychometrics(df: pd.DataFrame, _fs: Path, run_dir: Path):
+        scores = pd.DataFrame({"F1": np.linspace(0.1, 0.9, len(df))}, index=df.index)
+        out = run_dir / "psychometrics" / "factor_scores.csv"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        scores.to_csv(out, index=False)
+        return SimpleNamespace(factor_scores=scores)
+
+    def _fake_split(df: pd.DataFrame, stratify_col: str, seed: int):
+        return (
+            df.iloc[:8].copy(),
+            df.iloc[8:10].copy(),
+            df.iloc[10:].copy(),
+        )
+
+    def _fake_validate(*args, **kwargs):
+        return None
+
+    def _fake_train_all_baselines(
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        run_dir: Path,
+        seed: int,
+        text_col: str = "text_feedback",
+    ):
+        tasks = ["language", "sentiment", "detail_level"]
+        model_types = ["tfidf", "char_ngram"]
+        out: dict[str, dict[str, ClassificationResult]] = {}
+        for task in tasks:
+            out[task] = {}
+            for model_type in model_types:
+                model_dir = run_dir / "text_tasks" / task / model_type
+                model_dir.mkdir(parents=True, exist_ok=True)
+                model_path = model_dir / "model.joblib"
+                model_path.write_bytes(b"dummy-model-bytes")
+                metrics_path = model_dir / "metrics.json"
+                metrics_path.write_bytes(
+                    orjson.dumps(
+                        {
+                            "task": task,
+                            "model_type": model_type,
+                            "val": {"macro_f1": 0.9, "accuracy": 0.9},
+                            "hyperparameters": {"C": 1.0},
+                        },
+                        option=orjson.OPT_INDENT_2,
+                    )
+                )
+                out[task][model_type] = ClassificationResult(
+                    task=task,
+                    model_type=model_type,
+                    predictions=np.array([]),
+                    probabilities=np.empty((0, 0)),
+                    classes=[],
+                    model_path=model_path,
+                    hyperparameters={"C": 1.0},
+                    train_metrics={"macro_f1": 0.95},
+                    val_metrics={"macro_f1": 0.9},
+                )
+        return out
+
+    def _fake_run_fusion(*args, **kwargs):
+        return {"ok": True}
+
+    def _fake_run_contradiction(*args, **kwargs):
+        return {"ok": True}
+
+    def _fake_run_evaluation(df_test: pd.DataFrame, run_dir: Path, text_col: str = "text_feedback"):
+        eval_dir = run_dir / "evaluation"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        result = {"sentiment": {"tfidf": {"overall": {"macro_f1": 0.9}}}}
+        (eval_dir / "classification_results.json").write_bytes(orjson.dumps(result))
+        return result
+
+    def _fake_generate_evaluation_report(run_dir: Path) -> Path:
+        out = run_dir / "reports" / "evaluation_report.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# Evaluation", encoding="utf-8")
+        return out
+
+    def _fake_generate_all_model_cards(run_dir: Path) -> list[Path]:
+        return []
+
+    def _fake_generate_data_dictionary(run_dir: Path) -> Path:
+        out = run_dir / "reports" / "data_dictionary.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# Data Dictionary", encoding="utf-8")
+        return out
+
+    monkeypatch.setattr("src.pipeline.run_preprocessing", _fake_run_preprocessing)
+    monkeypatch.setattr("src.pipeline.save_preprocessed", _fake_save_preprocessed)
+    monkeypatch.setattr("src.pipeline.run_psychometrics", _fake_run_psychometrics)
+    monkeypatch.setattr("src.pipeline.stratified_split", _fake_split)
+    monkeypatch.setattr("src.pipeline.validate_split_no_leakage", _fake_validate)
+    monkeypatch.setattr("src.pipeline.train_all_baselines", _fake_train_all_baselines)
+    monkeypatch.setattr("src.pipeline.run_fusion", _fake_run_fusion)
+    monkeypatch.setattr("src.pipeline.run_contradiction_monitoring", _fake_run_contradiction)
+    monkeypatch.setattr("src.pipeline.run_evaluation", _fake_run_evaluation)
+    monkeypatch.setattr("src.pipeline.generate_evaluation_report", _fake_generate_evaluation_report)
+    monkeypatch.setattr("src.pipeline.generate_all_model_cards", _fake_generate_all_model_cards)
+    monkeypatch.setattr("src.pipeline.generate_data_dictionary", _fake_generate_data_dictionary)
+
+    db = Database(tmp_path / "phase3.db")
+    model_registry = ModelRegistry(db, tmp_path / "models")
+
+    run_id = run_full_pipeline(
+        data_path=None,
+        config_path=experiment_config_path,
+        factor_structure_path=factor_structure_path,
+        runs_dir=tmp_path / "runs",
+        seed=42,
+        df_raw=df_raw,
+        dataset_id="ds_phase3",
+        dataset_version=1,
+        model_registry=model_registry,
+        db=db,
+    )
+
+    run_dir = tmp_path / "runs" / run_id
+    assert (run_dir / "raw" / "dataset_snapshot.parquet").exists()
+    meta = orjson.loads((run_dir / "raw" / "snapshot_metadata.json").read_bytes())
+    assert meta["source"] == "dataframe_direct"
+
+    models, total = model_registry.list_models(dataset_id="ds_phase3", per_page=100)
+    assert total == 6
+
+    pipeline_row = db.fetchone(
+        "SELECT status FROM pipeline_runs WHERE id = ?",
+        (run_id,),
+    )
+    assert pipeline_row is not None
+    assert pipeline_row["status"] == "completed"
+
+    analysis_row = db.fetchone(
+        "SELECT id FROM analysis_runs WHERE pipeline_run_id = ?",
+        (run_id,),
+    )
+    assert analysis_row is not None
+
+    ref_count = db.fetchone(
+        "SELECT COUNT(*) AS cnt FROM analysis_model_refs WHERE analysis_id = ?",
+        (analysis_row["id"],),
+    )
+    assert ref_count is not None
+    assert ref_count["cnt"] == 6

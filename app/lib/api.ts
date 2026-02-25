@@ -84,6 +84,15 @@ export interface ArtifactItem {
   created_at: string | null;
 }
 
+export interface SummaryData {
+  total_datasets: number;
+  total_models: number;
+  total_analyses: number;
+  total_responses: number;
+  n_latent_factors: number;
+  n_survey_items: number;
+}
+
 // ---------------------------------------------------------------------------
 // Generic fetch helper
 // ---------------------------------------------------------------------------
@@ -178,6 +187,10 @@ export async function downloadReport(runId: string, reportName: string): Promise
   const res = await fetch(`${API_BASE}/runs/${runId}/artifacts/reports/${reportName}`);
   if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
   return res.blob();
+}
+
+export async function fetchSummary(): Promise<SummaryData> {
+  return apiFetch<SummaryData>("/summary");
 }
 
 // ---------------------------------------------------------------------------
@@ -298,8 +311,19 @@ export async function fetchDatasetPreview(
   return apiFetch<DatasetPreview>(`/datasets/${datasetId}/preview${qs ? `?${qs}` : ""}`);
 }
 
-export async function fetchDatasetSchema(datasetId: string): Promise<{ dataset_id: string; columns: ColumnSchema[] }> {
-  return apiFetch(`/datasets/${datasetId}/schema`);
+export async function fetchDatasetSchema(
+  datasetId: string,
+  params?: { version_id?: string }
+): Promise<{
+  dataset_id: string;
+  version_id?: string | null;
+  version?: number | null;
+  columns: ColumnSchema[];
+}> {
+  const sp = new URLSearchParams();
+  if (params?.version_id) sp.set("version_id", params.version_id);
+  const qs = sp.toString();
+  return apiFetch(`/datasets/${datasetId}/schema${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchDatasetVersions(
@@ -312,9 +336,17 @@ export async function fetchDatasetVersions(
 
 export async function fetchColumnRoles(
   datasetId: string,
-  versionId?: string
-): Promise<{ dataset_id: string; version_id: string | null; column_roles: Record<string, string> }> {
-  const qs = versionId ? `?version_id=${encodeURIComponent(versionId)}` : "";
+  params?: { version_id?: string; version?: number }
+): Promise<{
+  dataset_id: string;
+  version_id: string | null;
+  version: number | null;
+  column_roles: Record<string, string>;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.version_id) sp.set("version_id", params.version_id);
+  if (params?.version != null) sp.set("version", String(params.version));
+  const qs = sp.toString();
   return apiFetch(`/datasets/${datasetId}/column-roles${qs}`);
 }
 
