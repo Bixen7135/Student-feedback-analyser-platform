@@ -293,6 +293,18 @@ export default function TrainingPage() {
 
   const selectStyle = { ...inputStyle };
 
+  const datasetStepSelectStyle = {
+    width: "100%",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: "6px",
+    padding: "7px 12px",
+    fontFamily: "var(--font-jetbrains)",
+    fontSize: "12px",
+    color: "var(--text-primary)",
+    outline: "none",
+  } as const;
+
   const btnPrimary = {
     background: "var(--gold)",
     color: "#000",
@@ -417,7 +429,7 @@ export default function TrainingPage() {
       {/* Step 0: Select Dataset */}
       {/* ------------------------------------------------------------------ */}
       {step === 0 && (
-        <div className="space-y-5">
+        <div className="space-y-5 animate-fade-up">
           <div
             className="rounded-xl"
             style={{
@@ -427,7 +439,20 @@ export default function TrainingPage() {
             }}
           >
             <div style={{ marginBottom: "20px" }}>
-              <label style={label}>Dataset</label>
+              <label
+                style={{
+                  fontFamily: "var(--font-syne)",
+                  fontSize: "9.5px",
+                  fontWeight: 700,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--text-tertiary)",
+                  marginBottom: "8px",
+                  display: "block",
+                }}
+              >
+                Dataset
+              </label>
               {datasetsLoading ? (
                 <div
                   style={{
@@ -460,7 +485,7 @@ export default function TrainingPage() {
                 </p>
               ) : (
                 <select
-                  style={selectStyle}
+                  style={datasetStepSelectStyle}
                   value={selectedDataset?.id ?? ""}
                   onChange={(e) => {
                     const ds = datasets.find((d) => d.id === e.target.value) ?? null;
@@ -479,9 +504,22 @@ export default function TrainingPage() {
 
             {selectedDataset && dsBranches.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
-                <label style={label}>Branch</label>
+                <label
+                  style={{
+                    fontFamily: "var(--font-syne)",
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "var(--text-tertiary)",
+                    marginBottom: "8px",
+                    display: "block",
+                  }}
+                >
+                  Branch
+                </label>
                 <select
-                  style={selectStyle}
+                  style={datasetStepSelectStyle}
                   value={selectedBranch ?? ""}
                   onChange={(e) => setSelectedBranch(e.target.value || null)}
                 >
@@ -498,9 +536,22 @@ export default function TrainingPage() {
 
             {selectedDataset && dsVersions.length > 0 && (
               <div>
-                <label style={label}>Version</label>
+                <label
+                  style={{
+                    fontFamily: "var(--font-syne)",
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "var(--text-tertiary)",
+                    marginBottom: "8px",
+                    display: "block",
+                  }}
+                >
+                  Version
+                </label>
                 <select
-                  style={selectStyle}
+                  style={datasetStepSelectStyle}
                   value={selectedVersion ?? ""}
                   onChange={(e) =>
                     setSelectedVersion(e.target.value ? Number(e.target.value) : null)
@@ -517,13 +568,47 @@ export default function TrainingPage() {
             )}
           </div>
 
-          <div className="flex justify-end">
+          {!selectedDataset && !datasetsLoading && datasets.length > 0 && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "var(--text-tertiary)",
+                fontFamily: "var(--font-jetbrains)",
+                textAlign: "center",
+              }}
+            >
+              Select a dataset to continue to task configuration.
+            </div>
+          )}
+
+          <div>
             <button
-              style={btnPrimary}
+              className="w-full rounded-lg flex items-center justify-center gap-2 transition-all duration-150"
+              style={{
+                background: !selectedDataset ? "var(--gold-muted)" : "var(--gold)",
+                color: "#08080B",
+                padding: "11px 24px",
+                fontSize: "13px",
+                fontWeight: 600,
+                fontFamily: "var(--font-syne)",
+                letterSpacing: "0.05em",
+                border: "none",
+                cursor: !selectedDataset ? "not-allowed" : "pointer",
+                opacity: !selectedDataset ? 0.7 : 1,
+              }}
               disabled={!selectedDataset}
               onClick={() => setStep(1)}
             >
-              Next {"->"}
+              Next
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                <path
+                  d="M3 6.5H10M7.5 4L10 6.5L7.5 9"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           </div>
         </div>

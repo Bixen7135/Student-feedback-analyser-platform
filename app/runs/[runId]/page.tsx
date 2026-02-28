@@ -247,8 +247,88 @@ export default function RunDetailPage({ params }: Props) {
           <MetaRow label="Config Hash"   value={run.config_hash} />
           <MetaRow label="Data Snapshot" value={run.data_snapshot_id} />
           <MetaRow label="Git Commit"    value={run.git_commit ?? "N/A"} />
+          <MetaRow
+            label="Produced Models"
+            value={run.produced_models_count > 0 ? (
+              <Link
+                href={`/models?run_id=${encodeURIComponent(runId)}&include_archived=true`}
+                style={{ color: "var(--gold)", textDecoration: "none" }}
+              >
+                {run.produced_models_count}
+              </Link>
+            ) : "0"}
+          />
         </div>
       </div>
+
+      {run.produced_models_count > 0 && (
+        <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-dim)", padding: "20px 24px" }}>
+          <div className="flex items-center justify-between gap-3" style={{ marginBottom: "14px", flexWrap: "wrap" }}>
+            <div style={{ fontFamily: "var(--font-syne)", fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
+              Produced Models
+            </div>
+            <Link
+              href={`/models?run_id=${encodeURIComponent(runId)}&include_archived=true`}
+              style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--gold)", textDecoration: "none" }}
+            >
+              View all {run.produced_models_count}
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {run.produced_models_preview.map((model) => {
+              const isArchived = model.status !== "active";
+
+              return (
+                <Link
+                  key={model.id}
+                  href={`/models/${model.id}`}
+                  className="rounded-lg flex items-center justify-between gap-3"
+                  style={{
+                    background: "var(--bg-elevated)",
+                    border: "1px solid var(--border-dim)",
+                    padding: "10px 12px",
+                    textDecoration: "none",
+                  }}
+                >
+                  <div className="flex items-center gap-3" style={{ minWidth: 0, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--font-syne)", fontSize: "12px", fontWeight: 600, color: "var(--text-primary)" }}>
+                      {model.name}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
+                      {model.task} / {model.model_type} / v{model.version}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2" style={{ flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span
+                      className="rounded"
+                      style={{
+                        background: isArchived ? "var(--warning-dim)" : "var(--success-dim)",
+                        border: `1px solid ${isArchived ? "var(--warning)" : "var(--success)"}`,
+                        color: isArchived ? "var(--warning)" : "var(--success)",
+                        padding: "2px 6px",
+                        fontFamily: "var(--font-jetbrains)",
+                        fontSize: "9px",
+                      }}
+                    >
+                      {model.status}
+                    </span>
+                    <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
+                      {new Date(model.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          {run.produced_models_count > run.produced_models_preview.length && (
+            <div style={{ marginTop: "12px", fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-tertiary)" }}>
+              Showing {run.produced_models_preview.length} most recent models.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stage progress — chips + detailed stepper */}
       <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-dim)", padding: "20px 24px" }}>

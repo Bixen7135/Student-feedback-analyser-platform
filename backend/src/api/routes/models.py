@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_model_registry
 from src.storage.model_registry import ModelRegistry
+from src.storage.models import ModelMeta
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -33,6 +34,7 @@ class ModelResponse(BaseModel):
     storage_path: str
     run_id: str | None = None
     base_model_id: str | None = None
+    run_source: Literal["pipeline", "training", "unknown"] = "unknown"
 
 
 class ModelLineageResponse(BaseModel):
@@ -75,6 +77,26 @@ class CompareModelsRequest(BaseModel):
     model_ids: list[str]
 
 
+def _derive_run_source(model: ModelMeta) -> Literal["pipeline", "training", "unknown"]:
+    """Classify the origin of the model from persisted lineage fields."""
+    if model.job_id:
+        return "training"
+    if not model.run_id:
+        return "unknown"
+    if model.run_id.startswith("run_"):
+        return "pipeline"
+    if model.run_id.startswith("training_"):
+        return "training"
+    return "unknown"
+
+
+def _to_model_response(model: ModelMeta) -> ModelResponse:
+    return ModelResponse(
+        **model.model_dump(exclude={"job_id"}),
+        run_source=_derive_run_source(model),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -84,6 +106,8 @@ async def list_models(
     task: str | None = Query(None),
     model_type: str | None = Query(None),
     dataset_id: str | None = Query(None),
+    run_id: str | None = Query(None),
+    include_archived: bool = Query(False),
     sort: str = Query("created_at"),
     order: str = Query("desc"),
     page: int = Query(1, ge=1),
@@ -95,13 +119,15 @@ async def list_models(
         task=task,
         model_type=model_type,
         dataset_id=dataset_id,
+        run_id=run_id,
+        include_archived=include_archived,
         sort=sort,
         order=order,
         page=page,
         per_page=per_page,
     )
     return ModelListResponse(
-        models=[ModelResponse(**m.model_dump()) for m in models],
+        models=[_to_model_response(m) for m in models],
         total=total,
         page=page,
         per_page=per_page,
@@ -117,7 +143,7 @@ async def get_model(
     model = registry.get_model(model_id)
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
-    return ModelResponse(**model.model_dump())
+    return _to_model_response(model)
 
 
 @router.get("/{model_id}/model-card")
@@ -163,7 +189,7 @@ async def get_model_versions(
         model_type=model.model_type,
         dataset_id=model.dataset_id,
     )
-    return [ModelResponse(**v.model_dump()) for v in versions]
+    return [_to_model_response(v) for v in versions]
 
 
 @router.get("/{model_id}/lineage", response_model=ModelLineageResponse)
@@ -183,7 +209,7 @@ async def get_model_lineage(
     chain = registry.get_lineage(model_id)
     return ModelLineageResponse(
         model_id=model_id,
-        chain=[ModelResponse(**m.model_dump()) for m in chain],
+        chain=[_to_model_response(m) for m in chain],
     )
 
 
@@ -211,7 +237,7 @@ async def register_model(
         metrics=req.metrics,
         run_id=req.run_id,
     )
-    return ModelResponse(**meta.model_dump())
+    return _to_model_response(meta)
 
 
 @router.post("/compare", response_model=list[ModelResponse])
@@ -223,7 +249,7 @@ async def compare_models(
     if len(req.model_ids) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 models to compare")
     models = registry.compare_models(req.model_ids)
-    return [ModelResponse(**m.model_dump()) for m in models]
+    return [_to_model_response(m) for m in models]
 
 
 @router.patch("/{model_id}", response_model=ModelResponse)
@@ -236,7 +262,7 @@ async def update_model_metadata(
     model = registry.update_metadata(model_id, name=update.name)
     if model is None:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
-    return ModelResponse(**model.model_dump())
+    return _to_model_response(model)
 
 
 @router.delete("/{model_id}", response_model=ModelDeleteResponse)

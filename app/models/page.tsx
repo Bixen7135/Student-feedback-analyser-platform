@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fetchModels, deleteModel, ModelSummary } from "@/app/lib/api";
 
 const TASK_COLORS: Record<string, string> = {
@@ -10,8 +11,13 @@ const TASK_COLORS: Record<string, string> = {
   detail_level: "var(--running)",
 };
 
+const PER_PAGE = 20;
+
 export default function ModelsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lineageRunId = searchParams.get("run_id") ?? "";
+  const includeArchived = searchParams.get("include_archived") === "true";
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -31,7 +37,10 @@ export default function ModelsPage() {
     fetchModels({
       task: taskFilter || undefined,
       model_type: typeFilter || undefined,
+      run_id: lineageRunId || undefined,
+      include_archived: includeArchived,
       page,
+      per_page: PER_PAGE,
     })
       .then((res) => {
         if (!active) return;
@@ -45,7 +54,68 @@ export default function ModelsPage() {
         setLoading(false);
       });
     return () => { active = false; };
-  }, [taskFilter, typeFilter, page]);
+  }, [taskFilter, typeFilter, page, lineageRunId, includeArchived]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [lineageRunId, includeArchived]);
+
+  function renderLineage(model: ModelSummary) {
+    if (!model.run_id) return null;
+
+    if (model.run_source === "pipeline") {
+      return (
+        <Link
+          href={`/runs/${model.run_id}`}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            color: "var(--gold)",
+            textDecoration: "none",
+            borderBottom: "1px solid var(--gold-muted)",
+          }}
+        >
+          produced by pipeline run {model.run_id.slice(0, 20)}...
+        </Link>
+      );
+    }
+
+    if (model.run_source === "training") {
+      return <span>produced by training job {model.run_id.slice(0, 20)}...</span>;
+    }
+
+    return <span>linked run {model.run_id.slice(0, 20)}...</span>;
+  }
+
+  function renderSourceBadge(model: ModelSummary) {
+    if (!model.run_id) return null;
+
+    const label =
+      model.run_source === "pipeline"
+        ? "pipeline run"
+        : model.run_source === "training"
+          ? "training job"
+          : "linked run";
+
+    return (
+      <span
+        className="rounded"
+        style={{
+          background: "var(--gold-faint)",
+          border: "1px solid var(--gold-muted)",
+          color: "var(--gold)",
+          padding: "1px 6px",
+          fontSize: "9px",
+          fontFamily: "var(--font-jetbrains)",
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(total, rangeStart + Math.max(models.length, 1) - 1);
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -55,9 +125,16 @@ export default function ModelsPage() {
         setDeleteWarning(result);
         return;
       }
-      setModels((prev) => prev.filter((m) => m.id !== id));
+      const nextTotal = Math.max(0, total - 1);
+      const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / PER_PAGE)));
+      setTotal(nextTotal);
       setConfirmId(null);
       setDeleteWarning(null);
+      if (nextPage !== page) {
+        setPage(nextPage);
+        return;
+      }
+      setModels((prev) => prev.filter((m) => m.id !== id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
@@ -141,6 +218,43 @@ export default function ModelsPage() {
         </select>
       </div>
 
+      {lineageRunId && (
+        <div
+          className="rounded-lg flex items-center justify-between gap-3"
+          style={{
+            background: "var(--gold-faint)",
+            border: "1px solid var(--gold-muted)",
+            padding: "10px 14px",
+            marginBottom: "12px",
+          }}
+        >
+          <span
+            style={{
+              color: "var(--gold)",
+              fontSize: "11px",
+              fontFamily: "var(--font-jetbrains)",
+            }}
+          >
+            Showing {includeArchived ? "all" : "active"} models produced by run {lineageRunId}
+          </span>
+          <button
+            onClick={() => router.push("/models")}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--gold-muted)",
+              borderRadius: "4px",
+              color: "var(--gold)",
+              fontSize: "10px",
+              fontFamily: "var(--font-jetbrains)",
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {error && (
         <div
           className="rounded-lg"
@@ -167,7 +281,7 @@ export default function ModelsPage() {
             padding: "48px 0",
           }}
         >
-          Loading models…
+          Loading models...
         </div>
       )}
 
@@ -192,7 +306,75 @@ export default function ModelsPage() {
             No models registered
           </div>
           <div style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
-            Train a model to see it here.
+            {lineageRunId
+              ? includeArchived
+                ? "This run has not produced any models."
+                : "This run has not produced any active models."
+              : "Train a model to see it here."}
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && total > 0 && (
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{ marginBottom: "14px", flexWrap: "wrap" }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: "11px",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
+              }}
+            >
+              Prev
+            </button>
+            <span
+              style={{
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
+              }}
+            >
+              Next
+            </button>
           </div>
         </div>
       )}
@@ -203,6 +385,7 @@ export default function ModelsPage() {
           const taskColor = TASK_COLORS[m.task] || "var(--text-secondary)";
           const macroF1 = m.metrics?.macro_f1 ?? m.metrics?.val_macro_f1;
           const isConfirming = confirmId === m.id;
+          const isArchived = m.status !== "active";
 
           return (
             <div
@@ -258,6 +441,22 @@ export default function ModelsPage() {
                   >
                     {m.model_type}
                   </span>
+                  {renderSourceBadge(m)}
+                  {isArchived && (
+                    <span
+                      className="rounded"
+                      style={{
+                        background: "var(--warning-dim)",
+                        border: "1px solid var(--warning)",
+                        color: "var(--warning)",
+                        padding: "1px 6px",
+                        fontSize: "9px",
+                        fontFamily: "var(--font-jetbrains)",
+                      }}
+                    >
+                      archived
+                    </span>
+                  )}
                 </div>
 
                 <div
@@ -341,22 +540,23 @@ export default function ModelsPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setConfirmId(m.id)}
-                      title="Delete model"
+                      onClick={() => { if (!isArchived) setConfirmId(m.id); }}
+                      title={isArchived ? "Model already archived" : "Delete model"}
+                      disabled={isArchived}
                       style={{
                         background: "transparent",
                         border: "none",
                         padding: "4px",
-                        cursor: "pointer",
-                        opacity: 0.4,
+                        cursor: isArchived ? "not-allowed" : "pointer",
+                        opacity: isArchived ? 0.2 : 0.4,
                         color: "var(--text-tertiary)",
                         display: "flex",
                         alignItems: "center",
                         borderRadius: "4px",
                         transition: "opacity 0.15s",
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.4"; }}
+                      onMouseEnter={(e) => { if (!isArchived) e.currentTarget.style.opacity = "1"; }}
+                      onMouseLeave={(e) => { if (!isArchived) e.currentTarget.style.opacity = "0.4"; }}
                     >
                       <svg
                         width="14"
@@ -395,7 +595,7 @@ export default function ModelsPage() {
                     </span>
                   </span>
                 )}
-                {m.run_id && <span>run: {m.run_id.slice(0, 20)}…</span>}
+                {renderLineage(m)}
               </div>
             </div>
           );

@@ -127,14 +127,19 @@ class ModelRegistry:
         task: str | None = None,
         model_type: str | None = None,
         dataset_id: str | None = None,
+        run_id: str | None = None,
+        include_archived: bool = False,
         sort: str = "created_at",
         order: str = "desc",
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[ModelMeta], int]:
         """List models with filters and pagination."""
-        conditions = ["status = 'active'"]
+        conditions: list[str] = []
         params: list[Any] = []
+
+        if not include_archived:
+            conditions.append("status = 'active'")
 
         if task:
             conditions.append("task = ?")
@@ -145,8 +150,11 @@ class ModelRegistry:
         if dataset_id:
             conditions.append("dataset_id = ?")
             params.append(dataset_id)
+        if run_id:
+            conditions.append("run_id = ?")
+            params.append(run_id)
 
-        where = " AND ".join(conditions)
+        where = " AND ".join(conditions) if conditions else "1 = 1"
         valid_sorts = {"created_at", "name", "task", "model_type", "version"}
         if sort not in valid_sorts:
             sort = "created_at"

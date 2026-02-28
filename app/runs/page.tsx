@@ -5,6 +5,10 @@ import Link from "next/link";
 import { fetchRuns, deleteRun, RunSummary } from "@/app/lib/api";
 import { StageProgress } from "@/app/components/StageProgress";
 
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
 function overallStatus(run: RunSummary): "completed" | "running" | "failed" | "partial" {
   const stages = Object.values(run.stages);
   if (stages.some((s) => s.status === "failed")) return "failed";
@@ -20,11 +24,14 @@ const STATUS_STYLE: Record<string, { color: string; bg: string; border: string; 
   partial:   { color: "var(--warning)", bg: "var(--warning-dim)", border: "var(--warning)", dot: "var(--warning)" },
 };
 
+const PER_PAGE = 20;
+
 export default function RunHistoryPage() {
   const router = useRouter();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -60,12 +67,24 @@ export default function RunHistoryPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(runs.length / PER_PAGE));
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, runs.length]);
+
   async function handleDelete(runId: string) {
     setDeletingId(runId);
     setDeleteError(null);
     try {
       await deleteRun(runId);
-      setRuns((prev) => prev.filter((r) => r.run_id !== runId));
+      const nextRuns = runs.filter((r) => r.run_id !== runId);
+      const nextTotalPages = Math.max(1, Math.ceil(nextRuns.length / PER_PAGE));
+      setRuns(nextRuns);
+      if (page > nextTotalPages) {
+        setPage(nextTotalPages);
+      }
       setConfirmingId(null);
     } catch (e: unknown) {
       setDeleteError(e instanceof Error ? e.message : "Delete failed");
@@ -73,6 +92,12 @@ export default function RunHistoryPage() {
       setDeletingId(null);
     }
   }
+
+  const total = runs.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(total, page * PER_PAGE);
+  const pagedRuns = total === 0 ? [] : runs.slice(rangeStart - 1, rangeEnd);
 
   return (
     <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up">
@@ -113,7 +138,7 @@ export default function RunHistoryPage() {
                   marginLeft: "10px",
                 }}
               >
-                {runs.length} total
+                {total} total
               </span>
             )}
           </h1>
@@ -187,7 +212,7 @@ export default function RunHistoryPage() {
         </div>
       )}
 
-      {!loading && !error && runs.length === 0 && (
+      {!loading && !error && total === 0 && (
         <div
           className="rounded-xl text-center"
           style={{
@@ -214,8 +239,72 @@ export default function RunHistoryPage() {
       )}
 
       {/* ── Run cards ───────────────────────────────────── */}
+      {!loading && !error && total > 0 && (
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{ marginBottom: "14px", flexWrap: "wrap" }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: "11px",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
+              }}
+            >
+              Prev
+            </button>
+            <span
+              style={{
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
+              }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
-        {runs.map((run) => {
+        {pagedRuns.map((run) => {
           const status = overallStatus(run);
           const ss = STATUS_STYLE[status] ?? STATUS_STYLE.partial;
           const isConfirming = confirmingId === run.run_id;
@@ -368,6 +457,7 @@ export default function RunHistoryPage() {
 
               {/* Meta */}
               <div
+                className="flex items-center gap-3 flex-wrap"
                 style={{
                   fontFamily: "var(--font-jetbrains)",
                   fontSize: "10px",
@@ -375,7 +465,22 @@ export default function RunHistoryPage() {
                   marginBottom: "12px",
                 }}
               >
-                seed:{run.random_seed}&nbsp;·&nbsp;cfg:{run.config_hash.slice(0, 8)}
+                <span>seed:{run.random_seed}</span>
+                <span>cfg:{run.config_hash.slice(0, 8)}</span>
+                {run.produced_models_count > 0 && (
+                  <Link
+                    href={`/models?run_id=${encodeURIComponent(run.run_id)}&include_archived=true`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      color: "var(--gold)",
+                      textDecoration: "none",
+                      borderBottom: "1px solid var(--gold-muted)",
+                    }}
+                  >
+                    {run.produced_models_count}{" "}
+                    {pluralize(run.produced_models_count, "model", "models")}
+                  </Link>
+                )}
               </div>
 
               {/* Stages */}

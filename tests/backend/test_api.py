@@ -96,6 +96,7 @@ def test_create_run_response_includes_new_fields(client):
     assert data["branch_id"] is None
     assert data["dataset_version"] is None
     assert data["name"] is None
+    assert data["produced_models_count"] == 0
 
 
 def test_create_run_with_name(client):
@@ -116,6 +117,8 @@ def test_get_run_includes_new_fields(client):
     data = resp.json()
     assert data["name"] == "test-run"
     assert data["dataset_id"] is None
+    assert data["produced_models_count"] == 0
+    assert data["produced_models_preview"] == []
 
 
 def test_create_run_unknown_dataset_id_returns_404(client):

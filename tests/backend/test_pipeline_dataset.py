@@ -352,6 +352,11 @@ def test_pipeline_phase3_registers_models_and_links_analysis(
     models, total = model_registry.list_models(dataset_id="ds_phase3", per_page=100)
     assert total == 6
 
+    filtered_models, filtered_total = model_registry.list_models(run_id=run_id, per_page=100)
+    assert filtered_total == 6
+    assert len(filtered_models) == 6
+    assert all(m.run_id == run_id for m in filtered_models)
+
     pipeline_row = db.fetchone(
         "SELECT status FROM pipeline_runs WHERE id = ?",
         (run_id,),

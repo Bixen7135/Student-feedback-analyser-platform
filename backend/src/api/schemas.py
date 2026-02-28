@@ -26,11 +26,23 @@ class RunSummaryResponse(BaseModel):
     branch_id: str | None = None
     dataset_version: int | None = None
     name: str | None = None
+    produced_models_count: int = 0
+
+
+class ProducedModelPreviewResponse(BaseModel):
+    id: str
+    name: str
+    task: str
+    model_type: str
+    version: int
+    status: str
+    created_at: str
 
 
 class RunDetailResponse(RunSummaryResponse):
     git_commit: str | None = None
     system_info: dict[str, Any] | None = None
+    produced_models_preview: list[ProducedModelPreviewResponse] = []
 
 
 class CreateRunRequest(BaseModel):

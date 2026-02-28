@@ -42,7 +42,10 @@ export default function RootLayout({
     >
       <body className="flex" style={{ minHeight: "100vh" }}>
         <Sidebar />
-        <main className="flex-1 overflow-y-auto" style={{ minHeight: "100vh" }}>
+        <main
+          className="flex-1 overflow-y-auto"
+          style={{ minHeight: "100vh", minWidth: 0 }}
+        >
           {children}
         </main>
       </body>

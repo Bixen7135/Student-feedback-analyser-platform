@@ -25,11 +25,23 @@ export interface RunSummary {
   branch_id: string | null;
   dataset_version: number | null;
   name: string | null;
+  produced_models_count: number;
+}
+
+export interface ProducedModelPreview {
+  id: string;
+  name: string;
+  task: string;
+  model_type: string;
+  version: number;
+  status: string;
+  created_at: string;
 }
 
 export interface RunDetail extends RunSummary {
   git_commit?: string;
   system_info?: Record<string, string>;
+  produced_models_preview: ProducedModelPreview[];
 }
 
 export interface PsychometricsMetrics {
@@ -607,6 +619,8 @@ export async function setDatasetVersionAsDefault(
 // Model types
 // ---------------------------------------------------------------------------
 
+export type ModelRunSource = "pipeline" | "training" | "unknown";
+
 export interface ModelSummary {
   id: string;
   name: string;
@@ -622,6 +636,7 @@ export interface ModelSummary {
   storage_path: string;
   run_id: string | null;
   base_model_id: string | null;
+  run_source: ModelRunSource;
 }
 
 export interface ModelLineageResponse {
@@ -644,6 +659,8 @@ export async function fetchModels(params?: {
   task?: string;
   model_type?: string;
   dataset_id?: string;
+  run_id?: string;
+  include_archived?: boolean;
   sort?: string;
   order?: string;
   page?: number;
@@ -653,6 +670,8 @@ export async function fetchModels(params?: {
   if (params?.task) sp.set("task", params.task);
   if (params?.model_type) sp.set("model_type", params.model_type);
   if (params?.dataset_id) sp.set("dataset_id", params.dataset_id);
+  if (params?.run_id) sp.set("run_id", params.run_id);
+  if (params?.include_archived) sp.set("include_archived", "true");
   if (params?.sort) sp.set("sort", params.sort);
   if (params?.order) sp.set("order", params.order);
   if (params?.page) sp.set("page", String(params.page));

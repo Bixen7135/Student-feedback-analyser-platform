@@ -283,6 +283,10 @@ class TestRegisteredModelLink:
             model_ids = [m["id"] for m in models]
             assert model_id in model_ids
 
+            detail_resp = api_client.get(f"/api/models/{model_id}")
+            assert detail_resp.status_code == 200
+            assert detail_resp.json()["run_source"] == "training"
+
     def test_model_card_available_after_training(self, api_client):
         start_resp = api_client.post(
             "/api/training/start",

@@ -91,8 +91,14 @@ export default function AnalysesPage() {
     setConfirmId(null);
     try {
       await deleteAnalysis(id);
+      const nextTotal = Math.max(0, total - 1);
+      const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / perPage)));
+      setTotal(nextTotal);
+      if (nextPage !== page) {
+        setPage(nextPage);
+        return;
+      }
       setAnalyses((prev) => prev.filter((a) => a.id !== id));
-      setTotal((t) => t - 1);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -100,7 +106,9 @@ export default function AnalysesPage() {
     }
   }
 
-  const totalPages = Math.ceil(total / perPage);
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const rangeStart = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(total, rangeStart + Math.max(analyses.length, 1) - 1);
 
   return (
     <div style={{ padding: "32px 40px", maxWidth: "1200px", margin: "0 auto" }}>
@@ -457,38 +465,62 @@ export default function AnalysesPage() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between" style={{ marginTop: "16px" }}>
-          <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-            Page {page} of {totalPages} · {total} total
-          </span>
-          <div className="flex gap-2">
+      {!loading && !error && total > 0 && (
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{ marginTop: "16px", flexWrap: "wrap" }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: "11px",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
               style={{
-                padding: "6px 12px",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "5px",
                 background: "transparent",
-                color: page === 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontSize: "12px",
-                cursor: page === 1 ? "not-allowed" : "pointer",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
               }}
             >
               Prev
             </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+            <span
               style={{
-                padding: "6px 12px",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "5px",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
                 background: "transparent",
-                color: page === totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontSize: "12px",
-                cursor: page === totalPages ? "not-allowed" : "pointer",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
               }}
             >
               Next

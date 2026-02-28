@@ -167,6 +167,35 @@ class TestModelRegistry:
         assert total >= 1
         assert all(m.task == "language" for m in models)
 
+    def test_list_models_by_run_id(self, registry, tmp_dir):
+        import joblib as jl
+
+        p1 = tmp_dir / "run_filter_1.joblib"
+        p2 = tmp_dir / "run_filter_2.joblib"
+        jl.dump(LogisticRegression(), p1)
+        jl.dump(LogisticRegression(), p2)
+
+        target_run_id = "run_filter_target"
+        registry.register_model(
+            name="Pipeline-linked",
+            task="sentiment",
+            model_type="tfidf",
+            source_model_path=p1,
+            run_id=target_run_id,
+        )
+        registry.register_model(
+            name="Different lineage",
+            task="sentiment",
+            model_type="char_ngram",
+            source_model_path=p2,
+            run_id="training_other_source",
+        )
+
+        models, total = registry.list_models(run_id=target_run_id)
+        assert total == 1
+        assert len(models) == 1
+        assert models[0].run_id == target_run_id
+
     def test_get_model(self, registry, fake_model_path):
         meta = registry.register_model(
             name="Get Test",
@@ -255,6 +284,7 @@ def test_register_model_api(api_client, tmp_path):
     assert data["name"] == "API Test Model"
     assert data["task"] == "sentiment"
     assert data["version"] == 1
+    assert data["run_source"] == "unknown"
 
 
 def test_register_model_missing_file(api_client):
@@ -289,6 +319,7 @@ def test_get_model_detail(api_client, tmp_path):
     data = resp.json()
     assert data["name"] == "Detail Test"
     assert data["metrics"]["macro_f1"] == 0.91
+    assert data["run_source"] == "unknown"
 
 
 def test_get_model_not_found(api_client):
@@ -311,6 +342,153 @@ def test_list_models_filter_by_task(api_client, tmp_path):
     data = resp.json()
     assert data["total"] >= 1
     assert all(m["task"] == "detail_level" for m in data["models"])
+
+
+def test_list_models_filter_by_run_id_and_run_source(api_client, tmp_path):
+    model_path = _make_temp_model(tmp_path)
+    register_resp = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Pipeline Source Model",
+            "task": "sentiment",
+            "model_type": "tfidf",
+            "source_model_path": str(model_path),
+            "run_id": "run_api_filter_source",
+        },
+    )
+    assert register_resp.status_code == 200
+    model_id = register_resp.json()["id"]
+
+    resp = api_client.get("/api/models/?run_id=run_api_filter_source")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert len(data["models"]) == 1
+    assert data["models"][0]["id"] == model_id
+    assert data["models"][0]["run_id"] == "run_api_filter_source"
+    assert data["models"][0]["run_source"] == "pipeline"
+
+
+def test_get_model_detail_reports_training_run_source(api_client, tmp_path):
+    model_path = _make_temp_model(tmp_path)
+    register_resp = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Training Source Model",
+            "task": "language",
+            "model_type": "tfidf",
+            "source_model_path": str(model_path),
+            "run_id": "training_api_source",
+        },
+    )
+    assert register_resp.status_code == 200
+    model_id = register_resp.json()["id"]
+
+    resp = api_client.get(f"/api/models/{model_id}")
+    assert resp.status_code == 200
+    assert resp.json()["run_source"] == "training"
+
+
+def test_list_models_include_archived(api_client, tmp_path):
+    model_path = _make_temp_model(tmp_path)
+    register_resp = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Archived Visibility Model",
+            "task": "sentiment",
+            "model_type": "tfidf",
+            "source_model_path": str(model_path),
+            "run_id": "run_archived_visibility",
+        },
+    )
+    assert register_resp.status_code == 200
+    model_id = register_resp.json()["id"]
+
+    delete_resp = api_client.delete(f"/api/models/{model_id}")
+    assert delete_resp.status_code == 200
+    assert delete_resp.json()["deleted"] is True
+
+    active_resp = api_client.get("/api/models/?run_id=run_archived_visibility")
+    assert active_resp.status_code == 200
+    assert active_resp.json()["total"] == 0
+
+    archived_resp = api_client.get(
+        "/api/models/?run_id=run_archived_visibility&include_archived=true"
+    )
+    assert archived_resp.status_code == 200
+    data = archived_resp.json()
+    assert data["total"] == 1
+    assert data["models"][0]["id"] == model_id
+    assert data["models"][0]["status"] == "archived"
+
+
+def test_run_model_lineage_smoke(api_client, tmp_path):
+    create_run_resp = api_client.post("/api/runs", json={"seed": 99, "name": "lineage-smoke"})
+    assert create_run_resp.status_code == 200
+    run_id = create_run_resp.json()["run_id"]
+
+    model_path_a = _make_temp_model(tmp_path)
+    model_path_b = tmp_path / "lineage_b.joblib"
+    joblib.dump(LogisticRegression(), model_path_b)
+
+    register_a = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Lineage Smoke A",
+            "task": "sentiment",
+            "model_type": "tfidf",
+            "source_model_path": str(model_path_a),
+            "run_id": run_id,
+        },
+    )
+    register_b = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Lineage Smoke B",
+            "task": "language",
+            "model_type": "char_ngram",
+            "source_model_path": str(model_path_b),
+            "run_id": run_id,
+        },
+    )
+    assert register_a.status_code == 200
+    assert register_b.status_code == 200
+    model_a_id = register_a.json()["id"]
+    model_b_id = register_b.json()["id"]
+
+    detail_resp = api_client.get(f"/api/runs/{run_id}")
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert detail["produced_models_count"] == 2
+    preview = {m["id"]: m for m in detail["produced_models_preview"]}
+    assert preview[model_a_id]["status"] == "active"
+    assert preview[model_b_id]["status"] == "active"
+
+    delete_resp = api_client.delete(f"/api/models/{model_b_id}")
+    assert delete_resp.status_code == 200
+    assert delete_resp.json()["deleted"] is True
+
+    detail_after_delete = api_client.get(f"/api/runs/{run_id}")
+    assert detail_after_delete.status_code == 200
+    after_body = detail_after_delete.json()
+    assert after_body["produced_models_count"] == 2
+    preview_after = {m["id"]: m for m in after_body["produced_models_preview"]}
+    assert preview_after[model_a_id]["status"] == "active"
+    assert preview_after[model_b_id]["status"] == "archived"
+
+    active_models_resp = api_client.get(f"/api/models/?run_id={run_id}")
+    assert active_models_resp.status_code == 200
+    active_models = active_models_resp.json()
+    assert active_models["total"] == 1
+    assert active_models["models"][0]["id"] == model_a_id
+
+    all_models_resp = api_client.get(f"/api/models/?run_id={run_id}&include_archived=true")
+    assert all_models_resp.status_code == 200
+    all_models = all_models_resp.json()
+    assert all_models["total"] == 2
+    all_statuses = {m["id"]: m["status"] for m in all_models["models"]}
+    assert all_statuses[model_a_id] == "active"
+    assert all_statuses[model_b_id] == "archived"
 
 
 def test_get_model_versions(api_client, tmp_path):

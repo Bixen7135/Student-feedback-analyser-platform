@@ -16,6 +16,34 @@ const TASK_COLORS: Record<string, string> = {
   detail_level: "var(--running)",
 };
 
+function renderModelSource(model: ModelSummary) {
+  if (!model.run_id) return null;
+
+  if (model.run_source === "pipeline") {
+    return (
+      <Link
+        href={`/runs/${model.run_id}`}
+        style={{ color: "var(--gold)", textDecoration: "none" }}
+      >
+        pipeline run: {model.run_id}
+      </Link>
+    );
+  }
+
+  if (model.run_source === "training") {
+    return `training job: ${model.run_id}`;
+  }
+
+  return `run: ${model.run_id}`;
+}
+
+function sourceBadgeLabel(model: ModelSummary): string | null {
+  if (!model.run_id) return null;
+  if (model.run_source === "pipeline") return "pipeline run";
+  if (model.run_source === "training") return "training job";
+  return "linked run";
+}
+
 export default function ModelDetailPage({
   params,
 }: {
@@ -103,7 +131,7 @@ export default function ModelDetailPage({
           fontSize: "12px",
         }}
       >
-        Loading…
+        Loading...
       </div>
     );
   }
@@ -124,6 +152,9 @@ export default function ModelDetailPage({
   }
 
   const taskColor = TASK_COLORS[model.task] || "var(--text-secondary)";
+  const producingRunHref =
+    model.run_source === "pipeline" && model.run_id ? `/runs/${model.run_id}` : null;
+  const lineageLabel = sourceBadgeLabel(model);
 
   const tabStyle = (t: string) => ({
     background: tab === t ? "var(--bg-elevated)" : "transparent",
@@ -161,7 +192,7 @@ export default function ModelDetailPage({
           marginBottom: "12px",
         }}
       >
-        ← Models
+        {"<- Models"}
       </button>
 
       {error && (
@@ -216,7 +247,7 @@ export default function ModelDetailPage({
                   cursor: "pointer",
                 }}
               >
-                {metaSaving ? "Saving…" : "Save"}
+                {metaSaving ? "Saving..." : "Save"}
               </button>
               <button
                 onClick={() => {
@@ -280,8 +311,37 @@ export default function ModelDetailPage({
                 >
                   {model.model_type}
                 </span>
+                {lineageLabel && (
+                  <span
+                    className="rounded"
+                    style={{
+                      background: "var(--gold-faint)",
+                      border: "1px solid var(--gold-muted)",
+                      color: "var(--gold)",
+                      padding: "2px 8px",
+                      fontSize: "10px",
+                      fontFamily: "var(--font-jetbrains)",
+                    }}
+                  >
+                    {lineageLabel}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                {producingRunHref && (
+                  <Link
+                    href={producingRunHref}
+                    style={{
+                      ...btnBase,
+                      background: "transparent",
+                      color: "var(--gold)",
+                      border: "1px solid var(--gold-muted)",
+                      textDecoration: "none",
+                    }}
+                  >
+                    View Producing Run
+                  </Link>
+                )}
                 <Link
                   href={`/analyses/new?model_id=${model.id}`}
                   style={{
@@ -313,7 +373,11 @@ export default function ModelDetailPage({
             >
               <span>v{model.version}</span>
               <span>{new Date(model.created_at).toLocaleString()}</span>
-              {model.run_id && <span style={{ overflowWrap: "anywhere" }}>run: {model.run_id}</span>}
+              {model.run_id && (
+                <span style={{ overflowWrap: "anywhere" }}>
+                  {renderModelSource(model)}
+                </span>
+              )}
             </div>
           </>
         )}

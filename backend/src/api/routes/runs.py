@@ -11,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from src.api.dependencies import get_run_manager, get_dataset_manager, get_db, get_model_registry
 from src.api.schemas import (
     CreateRunRequest,
+    ProducedModelPreviewResponse,
     RunDetailResponse,
     RunSummaryResponse,
     StageStatusResponse,
@@ -49,7 +50,54 @@ def _stage_to_response(stage_data: dict) -> StageStatusResponse:
     return StageStatusResponse(**{k: stage_data.get(k) for k in StageStatusResponse.model_fields})
 
 
-def _run_to_summary(meta: dict) -> RunSummaryResponse:
+def _get_run_model_counts(run_ids: list[str], db) -> dict[str, int]:
+    """Return total produced model counts keyed by producing run_id."""
+    if not db or not run_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in run_ids)
+    rows = db.fetchall(
+        f"""SELECT run_id, COUNT(*) AS cnt
+            FROM models
+            WHERE run_id IN ({placeholders})
+            GROUP BY run_id""",
+        tuple(run_ids),
+    )
+    return {row["run_id"]: row["cnt"] for row in rows if row["run_id"]}
+
+
+def _get_run_models_preview(
+    run_id: str,
+    db,
+    limit: int = 5,
+) -> list[ProducedModelPreviewResponse]:
+    """Return the most recent models produced by a run, including archived ones."""
+    if not db or not run_id:
+        return []
+
+    rows = db.fetchall(
+        """SELECT id, name, task, model_type, version, status, created_at
+           FROM models
+           WHERE run_id = ?
+           ORDER BY created_at DESC
+           LIMIT ?""",
+        (run_id, limit),
+    )
+    return [
+        ProducedModelPreviewResponse(
+            id=row["id"],
+            name=row["name"],
+            task=row["task"],
+            model_type=row["model_type"],
+            version=row["version"],
+            status=row["status"],
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
+
+
+def _run_to_summary(meta: dict, produced_models_count: int = 0) -> RunSummaryResponse:
     stages = {k: _stage_to_response(v) for k, v in meta.get("stages", {}).items()}
     return RunSummaryResponse(
         run_id=meta["run_id"],
@@ -62,23 +110,33 @@ def _run_to_summary(meta: dict) -> RunSummaryResponse:
         branch_id=meta.get("branch_id"),
         dataset_version=meta.get("dataset_version"),
         name=meta.get("name"),
+        produced_models_count=produced_models_count,
     )
 
 
-def _run_to_detail(meta: dict) -> RunDetailResponse:
-    summary = _run_to_summary(meta)
+def _run_to_detail(
+    meta: dict,
+    produced_models_count: int = 0,
+    produced_models_preview: list[ProducedModelPreviewResponse] | None = None,
+) -> RunDetailResponse:
+    summary = _run_to_summary(meta, produced_models_count=produced_models_count)
     return RunDetailResponse(
         **summary.model_dump(),
         git_commit=meta.get("git_commit"),
         system_info=meta.get("system_info"),
+        produced_models_preview=produced_models_preview or [],
     )
 
 
 @router.get("/", response_model=list[RunSummaryResponse])
-async def list_runs(mgr: RunManager = Depends(get_run_manager)):
+async def list_runs(
+    mgr: RunManager = Depends(get_run_manager),
+    db=Depends(get_db),
+):
     """List all runs in reverse chronological order."""
     runs = mgr.list_runs()
-    return [_run_to_summary(r) for r in runs]
+    counts = _get_run_model_counts([r["run_id"] for r in runs], db)
+    return [_run_to_summary(r, produced_models_count=counts.get(r["run_id"], 0)) for r in runs]
 
 
 @router.post("/", response_model=RunSummaryResponse)
@@ -128,12 +186,22 @@ async def create_run(
 
 
 @router.get("/{run_id}", response_model=RunDetailResponse)
-async def get_run(run_id: str, mgr: RunManager = Depends(get_run_manager)):
+async def get_run(
+    run_id: str,
+    mgr: RunManager = Depends(get_run_manager),
+    db=Depends(get_db),
+):
     """Get full detail for a specific run."""
     if not mgr.run_exists(run_id):
         raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
     meta = mgr.load_run(run_id)
-    return _run_to_detail(meta)
+    produced_models_count = _get_run_model_counts([run_id], db).get(run_id, 0)
+    produced_models_preview = _get_run_models_preview(run_id, db)
+    return _run_to_detail(
+        meta,
+        produced_models_count=produced_models_count,
+        produced_models_preview=produced_models_preview,
+    )
 
 
 @router.post("/{run_id}/stages/{stage_name}/start")

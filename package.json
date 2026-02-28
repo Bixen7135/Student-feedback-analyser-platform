@@ -6,7 +6,8 @@
     "dev": "NODE_OPTIONS=--no-deprecation next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:proxy": "node --test --experimental-strip-types tests/web/api-proxy.test.mts"
   },
   "dependencies": {
     "next": "16.1.6",
