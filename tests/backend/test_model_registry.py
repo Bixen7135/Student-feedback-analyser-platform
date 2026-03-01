@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import joblib
+import orjson
 import pytest
 from fastapi.testclient import TestClient
 from sklearn.linear_model import LogisticRegression
@@ -111,6 +112,37 @@ class TestModelRegistry:
         )
         artifact_path = Path(meta.storage_path) / "model.joblib"
         assert artifact_path.exists()
+
+    def test_register_model_round_trips_signature_fields(self, registry, fake_model_path):
+        input_signature = {
+            "text": {"source_column": "text_feedback", "model_input_column": "text_model_input"},
+            "label": {"column": "sentiment_class"},
+        }
+        preprocess_spec = {"id": "preprocess_v1", "params": {"redact_pii": True}}
+        training_profile = {"class_priors": {"positive": 0.6, "negative": 0.4}}
+
+        meta = registry.register_model(
+            name="Signature Test",
+            task="sentiment",
+            model_type="tfidf",
+            source_model_path=fake_model_path,
+            input_signature=input_signature,
+            preprocess_spec=preprocess_spec,
+            training_profile=training_profile,
+        )
+
+        fetched = registry.get_model(meta.id)
+        assert fetched is not None
+        assert fetched.input_signature == input_signature
+        assert fetched.preprocess_spec == preprocess_spec
+        assert fetched.training_profile == training_profile
+
+        signature_path = Path(meta.storage_path) / "signature.json"
+        assert signature_path.exists()
+        signature_payload = orjson.loads(signature_path.read_bytes())
+        assert signature_payload["input_signature"] == input_signature
+        assert signature_payload["preprocess_spec"] == preprocess_spec
+        assert signature_payload["training_profile"] == training_profile
 
     def test_register_auto_version_increment(self, registry, fake_model_path, tmp_dir):
         """Models for same task+type+dataset should auto-increment version."""
@@ -320,6 +352,56 @@ def test_get_model_detail(api_client, tmp_path):
     assert data["name"] == "Detail Test"
     assert data["metrics"]["macro_f1"] == 0.91
     assert data["run_source"] == "unknown"
+
+
+def test_get_model_compatibility(api_client, tmp_path):
+    dataset_csv = io.BytesIO(
+        b"text_feedback,sentiment_class\nGreat course,positive\nNeeds work,negative\n"
+    )
+    upload_resp = api_client.post(
+        "/api/datasets/upload",
+        files={"file": ("compatibility.csv", dataset_csv, "text/csv")},
+        data={"name": "Compatibility Dataset"},
+    )
+    assert upload_resp.status_code == 200, upload_resp.text
+    dataset_id = upload_resp.json()["id"]
+
+    model_path = _make_temp_model(tmp_path)
+    register_resp = api_client.post(
+        "/api/models/register",
+        json={
+            "name": "Compatibility Route Model",
+            "task": "sentiment",
+            "model_type": "tfidf",
+            "source_model_path": str(model_path),
+            "input_signature": {
+                "required_roles": ["text"],
+                "text": {
+                    "role": "text",
+                    "source_column": "text_feedback",
+                    "model_input_column": "text_model_input",
+                },
+                "label_schema": {
+                    "role": "sentiment",
+                    "column": "sentiment_class",
+                    "class_order": ["negative", "positive"],
+                },
+                "preprocess_spec_id": "preprocess_v1",
+            },
+            "preprocess_spec": {"id": "preprocess_v1"},
+        },
+    )
+    assert register_resp.status_code == 200, register_resp.text
+    model_id = register_resp.json()["id"]
+
+    resp = api_client.get(
+        f"/api/models/{model_id}/compatibility?dataset_id={dataset_id}"
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["text_col_used"] == "text_feedback"
+    assert data["preprocess_spec_id"] == "preprocess_v1"
 
 
 def test_get_model_not_found(api_client):

@@ -219,7 +219,11 @@ def test_pipeline_phase3_registers_models_and_links_analysis(
         }
     )
 
-    def _fake_run_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
+    def _fake_apply_preprocess(
+        df: pd.DataFrame,
+        text_col: str = "text_feedback",
+        spec=None,
+    ) -> pd.DataFrame:
         return df.copy()
 
     def _fake_save_preprocessed(df: pd.DataFrame, run_dir: Path) -> Path:
@@ -315,7 +319,7 @@ def test_pipeline_phase3_registers_models_and_links_analysis(
         out.write_text("# Data Dictionary", encoding="utf-8")
         return out
 
-    monkeypatch.setattr("src.pipeline.run_preprocessing", _fake_run_preprocessing)
+    monkeypatch.setattr("src.pipeline.apply_preprocess", _fake_apply_preprocess)
     monkeypatch.setattr("src.pipeline.save_preprocessed", _fake_save_preprocessed)
     monkeypatch.setattr("src.pipeline.run_psychometrics", _fake_run_psychometrics)
     monkeypatch.setattr("src.pipeline.stratified_split", _fake_split)
@@ -356,6 +360,9 @@ def test_pipeline_phase3_registers_models_and_links_analysis(
     assert filtered_total == 6
     assert len(filtered_models) == 6
     assert all(m.run_id == run_id for m in filtered_models)
+    assert all(m.preprocess_spec.get("id") == "preprocess_v1" for m in filtered_models)
+    assert all("input_signature" in m.model_dump() for m in filtered_models)
+    assert all(m.input_signature["preprocess_spec_id"] == "preprocess_v1" for m in filtered_models)
 
     pipeline_row = db.fetchone(
         "SELECT status FROM pipeline_runs WHERE id = ?",

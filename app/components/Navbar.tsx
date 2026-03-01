@@ -2,19 +2,17 @@ import Link from "next/link";
 
 export function Navbar() {
   return (
-    <nav className="bg-slate-800 text-white px-6 py-3 flex items-center gap-6">
-      <Link href="/" className="font-bold text-lg tracking-tight hover:text-slate-300">
+    <nav className="app-navbar">
+      <Link href="/" className="app-navbar__brand">
         SFAP
       </Link>
-      <Link href="/runs" className="text-sm hover:text-slate-300">
+      <Link href="/runs" className="app-navbar__link">
         Run History
       </Link>
-      <Link href="/runs/new" className="text-sm hover:text-slate-300">
-        New Run
+      <Link href="/runs/new" className="app-navbar__link">
+        Run Pipeline
       </Link>
-      <span className="ml-auto text-xs text-slate-400">
-        Student Feedback Analysis Platform v0.1
-      </span>
+      <span className="app-navbar__meta">Student Feedback Analysis Platform v0.1</span>
     </nav>
   );
 }

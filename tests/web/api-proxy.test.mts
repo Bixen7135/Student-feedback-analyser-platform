@@ -34,6 +34,37 @@ test("GET proxy forwards path and query string to backend", async () => {
   }
 });
 
+test("GET proxy preserves nested analytics paths", async () => {
+  const calls: Array<{ input: string; init?: RequestInit & { duplex?: "half" } }> = [];
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async (input, init) => {
+    calls.push({
+      input: String(input),
+      init: init as RequestInit & { duplex?: "half" },
+    });
+    return Response.json({ ok: true }, { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const req = new Request(
+      "http://localhost:3000/api/analytics/analyses/a_123/descriptive?filters=%5B%5D&search=test",
+    );
+    const res = await GET(req, {
+      params: Promise.resolve({ path: ["analytics", "analyses", "a_123", "descriptive"] }),
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0]?.input,
+      "http://localhost:8000/api/analytics/analyses/a_123/descriptive?filters=%5B%5D&search=test",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("DELETE proxy forwards request body and returns 502 on upstream failure", async () => {
   const calls: Array<{ input: string; init?: RequestInit & { duplex?: "half" } }> = [];
   const originalFetch = globalThis.fetch;

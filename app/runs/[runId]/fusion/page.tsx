@@ -60,7 +60,7 @@ export default function FusionPage({ params }: Props) {
   }, [runId]);
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up space-y-6">
+    <div className="page-shell page-standard page-shell--md animate-fade-up space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-tertiary)" }}>
         <Link href="/runs" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Runs</Link>
@@ -114,7 +114,8 @@ export default function FusionPage({ params }: Props) {
             <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "14px", fontFamily: "var(--font-jetbrains)" }}>
               Negative ΔMAE = improvement · Positive = worse than survey-only
             </p>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="table-scroll">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <Th>Factor</Th>
@@ -139,7 +140,8 @@ export default function FusionPage({ params }: Props) {
                   );
                 })}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
         </>
       )}

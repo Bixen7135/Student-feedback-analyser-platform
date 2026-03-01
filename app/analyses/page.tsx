@@ -18,12 +18,6 @@ function fmtDate(iso: string): string {
   });
 }
 
-function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1048576) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1048576).toFixed(1)} MB`;
-}
-
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -111,7 +105,7 @@ export default function AnalysesPage() {
   const rangeEnd = total === 0 ? 0 : Math.min(total, rangeStart + Math.max(analyses.length, 1) - 1);
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: "1200px", margin: "0 auto" }}>
+    <div className="page-shell page-standard page-shell--lg animate-fade-up">
       {/* Header */}
       <div className="flex items-center justify-between" style={{ marginBottom: "28px" }}>
         <div>
@@ -130,31 +124,23 @@ export default function AnalysesPage() {
             Batch analyses — {total} total
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="analyses-page__header-actions">
           <Link
             href="/analyses/compare"
+            className="analyses-page__header-action analyses-page__header-action--secondary"
             style={{
-              padding: "8px 14px",
               border: "1px solid var(--border-dim)",
-              borderRadius: "6px",
-              fontSize: "13px",
               color: "var(--text-secondary)",
-              textDecoration: "none",
-              fontWeight: 500,
             }}
           >
             Compare
           </Link>
           <Link
             href="/analyses/new"
+            className="analyses-page__header-action analyses-page__header-action--primary"
             style={{
-              padding: "8px 16px",
               background: "var(--gold)",
               color: "#000",
-              borderRadius: "6px",
-              fontSize: "13px",
-              fontWeight: 600,
-              textDecoration: "none",
             }}
           >
             + New Analysis
@@ -163,7 +149,7 @@ export default function AnalysesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3" style={{ marginBottom: "20px" }}>
+      <div className="flex flex-wrap gap-3" style={{ marginBottom: "20px" }}>
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -184,7 +170,7 @@ export default function AnalysesPage() {
         </select>
         <input
           type="text"
-          placeholder="Filter by dataset ID…"
+          placeholder="Search by dataset ID…"
           value={datasetFilter}
           onChange={(e) => { setDatasetFilter(e.target.value); setPage(1); }}
           style={{
@@ -269,7 +255,8 @@ export default function AnalysesPage() {
           style={{
             border: "1px solid var(--border-dim)",
             borderRadius: "8px",
-            overflow: "hidden",
+            overflowX: "auto",
+            overflowY: "hidden",
           }}
         >
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -399,60 +386,42 @@ export default function AnalysesPage() {
                         {fmtDate(a.created_at)}
                       </span>
                     </td>
-                    <td style={{ padding: "12px 16px" }}>
-                      <div className="flex gap-2">
-                        <Link
-                          href={`/analyses/${a.id}`}
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--gold)",
-                            textDecoration: "none",
-                            fontWeight: 500,
-                          }}
-                        >
-                          View
-                        </Link>
-                        {a.status === "completed" && (
+                    <td style={{ padding: "12px 16px", minWidth: "220px" }}>
+                      <div className="analyses-page__row-actions">
+                        <div className={`analyses-page__row-actions-main${a.status === "completed" ? " is-complete" : ""}`}>
                           <Link
-                            href={`/analyses/${a.id}/results`}
-                            style={{
-                              fontSize: "12px",
-                              color: "var(--text-secondary)",
-                              textDecoration: "none",
-                            }}
+                            href={`/analyses/${a.id}`}
+                            className="analyses-page__row-action analyses-page__row-action--primary"
                           >
-                            Results
+                            Open
                           </Link>
-                        )}
-                        <button
-                          onClick={() => handleDelete(a.id)}
-                          disabled={deletingId === a.id}
-                          style={{
-                            fontSize: "12px",
-                            color: confirmId === a.id ? "var(--error, #ef4444)" : "var(--text-tertiary)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: 0,
-                            fontWeight: confirmId === a.id ? 600 : 400,
-                          }}
-                        >
-                          {confirmId === a.id ? "Confirm?" : deletingId === a.id ? "…" : "Delete"}
-                        </button>
-                        {confirmId === a.id && (
+                          {a.status === "completed" && (
+                            <Link
+                              href={`/analyses/${a.id}/results`}
+                              className="analyses-page__row-action analyses-page__row-action--secondary"
+                            >
+                              Results
+                            </Link>
+                          )}
                           <button
-                            onClick={() => setConfirmId(null)}
-                            style={{
-                              fontSize: "12px",
-                              color: "var(--text-tertiary)",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              padding: 0,
-                            }}
+                            type="button"
+                            onClick={() => handleDelete(a.id)}
+                            disabled={deletingId === a.id}
+                            className={`analyses-page__row-action analyses-page__row-action--danger${confirmId === a.id ? " is-confirm" : ""}`}
                           >
-                            Cancel
+                            {confirmId === a.id ? "Confirm Delete?" : deletingId === a.id ? "..." : "Delete"}
                           </button>
+                        </div>
+                        {confirmId === a.id && (
+                          <div className="analyses-page__row-actions-manage">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmId(null)}
+                              className="analyses-page__row-action analyses-page__row-action--plain"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
@@ -468,18 +437,25 @@ export default function AnalysesPage() {
       {!loading && !error && total > 0 && (
         <div
           className="flex items-center justify-between gap-3"
-          style={{ marginTop: "16px", flexWrap: "wrap" }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+            alignItems: "center",
+            marginTop: "16px",
+            gap: "12px",
+          }}
         >
           <div
             style={{
               fontFamily: "var(--font-jetbrains)",
               fontSize: "11px",
               color: "var(--text-tertiary)",
+              justifySelf: "start",
             }}
           >
             Showing {rangeStart}-{rangeEnd} of {total}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" style={{ gridColumn: 2, justifyContent: "center" }}>
             <button
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
               disabled={page <= 1}
@@ -531,3 +507,4 @@ export default function AnalysesPage() {
     </div>
   );
 }
+

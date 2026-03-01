@@ -49,31 +49,22 @@ export function StageProgress({ stages }: Props) {
         return (
           <div
             key={stage}
-            className="flex items-center gap-1.5 rounded"
+            className="ui-stage-pill"
             title={s?.error ?? undefined}
             style={{
               background: style.bg,
               border: `1px solid ${style.border}`,
               color: style.color,
-              padding: "4px 10px",
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "11px",
             }}
           >
             <span
-              className={`rounded-full shrink-0 ${isRunning ? "animate-pulse-dot" : ""}`}
+              className={`ui-stage-pill__dot${isRunning ? " animate-pulse-dot" : ""}`}
               style={{
-                width: "5px",
-                height: "5px",
                 background: style.dot,
               }}
             />
             <span>{STAGE_LABELS[stage] ?? stage}</span>
-            {s?.duration_seconds != null && (
-              <span style={{ color: "var(--text-tertiary)", marginLeft: "2px" }}>
-                {s.duration_seconds.toFixed(1)}s
-              </span>
-            )}
+            {s?.duration_seconds != null && <span className="ui-stage-pill__meta">{s.duration_seconds.toFixed(1)}s</span>}
           </div>
         );
       })}

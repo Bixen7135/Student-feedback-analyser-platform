@@ -1,0 +1,63 @@
+{
+  "task": "sentiment",
+  "model_type": "char_ngram",
+  "seed": 50,
+  "hyperparameters": {
+    "model_type": "char_ngram_logreg",
+    "analyzer": "char_wb",
+    "ngram_range": [
+      2,
+      5
+    ],
+    "max_features": 100000,
+    "sublinear_tf": true,
+    "C": 1.0,
+    "max_iter": 1000,
+    "class_weight": "balanced"
+  },
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "train": {
+    "macro_f1": 0.9975402078974552,
+    "accuracy": 0.9970906630581867,
+    "per_class_f1": {
+      "negative": 0.9992852037169406,
+      "neutral": 0.9958264583131127,
+      "positive": 0.9975089616623124
+    }
+  },
+  "val": {
+    "macro_f1": 0.9987358457988785,
+    "accuracy": 0.9983766233766234,
+    "per_class_f1": {
+      "negative": 1.0,
+      "neutral": 0.9976617303195635,
+      "positive": 0.9985458070770722
+    },
+    "confusion_matrix": [
+      [
+        175,
+        0,
+        0
+      ],
+      [
+        0,
+        640,
+        3
+      ],
+      [
+        0,
+        0,
+        1030
+      ]
+    ]
+  },
+  "predicted_class_distribution": {
+    "negative": 0.0946969696969697,
+    "neutral": 0.3463203463203463,
+    "positive": 0.558982683982684
+  }
+}

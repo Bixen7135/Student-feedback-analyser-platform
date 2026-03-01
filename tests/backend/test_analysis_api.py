@@ -163,8 +163,10 @@ class TestStartAnalysis:
         )
         assert resp.status_code == 422  # Pydantic validation
 
-    def test_start_422_for_incompatible_model_dataset(self, api_client, tmp_path):
-        """Model trained on another dataset should be rejected with 422."""
+    def test_start_allows_cross_dataset_reuse_when_schema_is_compatible(
+        self, api_client, tmp_path
+    ):
+        """A model from dataset A can be applied to dataset B when roles resolve."""
         other_csv = tmp_path / "other_dataset.csv"
         _make_labelled_csv(other_csv, n_per_class=8)
         with open(other_csv, "rb") as f:
@@ -194,15 +196,41 @@ class TestStartAnalysis:
             other_model_id = status.get("model_id")
         assert other_model_id, "Expected second dataset model to be registered"
 
-        incompatible_resp = api_client.post(
+        compatible_resp = api_client.post(
             "/api/analyses",
             json={
                 "dataset_id": api_client.dataset_id,
                 "model_ids": [other_model_id],
             },
         )
+        assert compatible_resp.status_code == 202, compatible_resp.text
+        assert compatible_resp.json()["dataset_id"] == api_client.dataset_id
+
+    def test_start_422_for_schema_incompatible_model_dataset(self, api_client, tmp_path):
+        """A model should be rejected with structured reasons when the target lacks text."""
+        numeric_csv = tmp_path / "numeric_only.csv"
+        pd.DataFrame({"q1": [1, 2, 3], "q2": [4, 5, 6]}).to_csv(numeric_csv, index=False)
+        with open(numeric_csv, "rb") as f:
+            upload_resp = api_client.post(
+                "/api/datasets/upload",
+                files={"file": ("numeric_only.csv", f, "text/csv")},
+                data={"name": "analysis_numeric_only"},
+            )
+        assert upload_resp.status_code == 200, upload_resp.text
+        numeric_dataset_id = upload_resp.json()["id"]
+
+        incompatible_resp = api_client.post(
+            "/api/analyses",
+            json={
+                "dataset_id": numeric_dataset_id,
+                "model_ids": [api_client.model_id],
+            },
+        )
         assert incompatible_resp.status_code == 422
-        assert "incompatible" in incompatible_resp.json()["detail"].lower()
+        detail = incompatible_resp.json()["detail"]
+        assert detail["message"].startswith("One or more models are incompatible")
+        assert detail["models"][0]["compatibility"]["ok"] is False
+        assert detail["models"][0]["compatibility"]["reasons"][0]["code"] == "missing_required_role"
 
     def test_start_with_metadata(self, api_client):
         resp = api_client.post(

@@ -67,21 +67,31 @@ export default function CompareAnalysesPage() {
   const completedAnalyses = analyses.filter((a) => a.status === "completed");
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: "1100px", margin: "0 auto" }}>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "20px" }}>
-        <Link href="/analyses" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>
-          Analyses
+    <div className="page-shell page-standard page-shell--lg animate-fade-up">
+      {/* Back link */}
+      <div style={{ marginBottom: "20px" }}>
+        <Link
+          href="/analyses"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--text-tertiary)",
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+          }}
+        >
+          <span aria-hidden="true">&larr;</span>
+          <span>Analyses</span>
         </Link>
-        {" / "}
-        <span style={{ color: "var(--text-secondary)" }}>Compare</span>
       </div>
 
       <h1
         style={{
           fontFamily: "var(--font-syne)",
           fontWeight: 700,
-          fontSize: "22px",
+          fontSize: "clamp(20px, 2vw, 24px)",
           color: "var(--text-primary)",
           marginBottom: "6px",
         }}
@@ -93,7 +103,14 @@ export default function CompareAnalysesPage() {
       </p>
 
       {/* Selection */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
         {[
           { label: "Analysis A", value: id1, set: setId1 },
           { label: "Analysis B", value: id2, set: setId2 },
@@ -132,11 +149,12 @@ export default function CompareAnalysesPage() {
         ))}
       </div>
 
-      <div className="flex gap-3 items-center" style={{ marginBottom: "28px" }}>
+      <div className="flex gap-3 items-center" style={{ marginBottom: "28px", flexWrap: "wrap" }}>
         <button
           onClick={handleCompare}
           disabled={!id1 || !id2 || id1 === id2 || comparing}
           style={{
+            marginLeft: "auto",
             padding: "9px 20px",
             background: id1 && id2 && id1 !== id2 && !comparing ? "var(--gold)" : "var(--border-dim)",
             color: id1 && id2 && id1 !== id2 && !comparing ? "#000" : "var(--text-tertiary)",
@@ -176,7 +194,14 @@ export default function CompareAnalysesPage() {
       {comparison && (
         <div>
           {/* Run overview */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
             {[comparison.run_1, comparison.run_2].map((run, i) => (
               <div
                 key={run.id}
@@ -231,7 +256,7 @@ export default function CompareAnalysesPage() {
                 </div>
               )}
               {comparison.disagreement.by_task && (
-                <div className="flex gap-4">
+                <div className="flex gap-4" style={{ flexWrap: "wrap" }}>
                   {Object.entries(comparison.disagreement.by_task).map(([task, rate]) => (
                     <div key={task}>
                       <div style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{TASK_LABELS[task] ?? task}</div>
@@ -267,7 +292,13 @@ export default function CompareAnalysesPage() {
                       <h3 style={{ fontWeight: 600, fontSize: "14px", color: "var(--text-primary)", marginBottom: "16px" }}>
                         {TASK_LABELS[tc.task] ?? tc.task}
                       </h3>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+                          gap: "20px",
+                        }}
+                      >
                         {/* Run A */}
                         <div>
                           <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
@@ -353,3 +384,4 @@ export default function CompareAnalysesPage() {
     </div>
   );
 }
+

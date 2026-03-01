@@ -35,6 +35,7 @@ export default function RunHistoryPage() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [expandedStageRuns, setExpandedStageRuns] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let active = true;
@@ -100,7 +101,7 @@ export default function RunHistoryPage() {
   const pagedRuns = total === 0 ? [] : runs.slice(rangeStart - 1, rangeEnd);
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--md animate-fade-up">
 
       {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-center justify-between" style={{ marginBottom: "28px" }}>
@@ -143,26 +144,37 @@ export default function RunHistoryPage() {
             )}
           </h1>
         </div>
-        <Link
-          href="/runs/new"
-          className="inline-flex items-center gap-2 rounded-lg"
-          style={{
-            background: "var(--gold)",
-            color: "#08080B",
-            padding: "8px 16px",
-            fontSize: "12px",
-            fontWeight: 600,
-            fontFamily: "var(--font-syne)",
-            letterSpacing: "0.04em",
-            textDecoration: "none",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M6 3.5V8.5M3.5 6H8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          New Run
-        </Link>
+        <div className="runs-page__header-actions">
+          <Link
+            href="/models"
+            className="runs-page__header-action runs-page__header-action--secondary"
+            style={{
+              background: "transparent",
+              color: "var(--text-secondary)",
+              border: "1px solid var(--border-dim)",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M6 1L10.5 3.5V8.5L6 11L1.5 8.5V3.5L6 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M6 6L10.5 3.5M6 6L1.5 3.5M6 6V11" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+            Models
+          </Link>
+          <Link
+            href="/runs/new"
+            className="runs-page__header-action runs-page__header-action--primary"
+            style={{
+              background: "var(--gold)",
+              color: "#08080B",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M6 3.5V8.5M3.5 6H8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+            Run Pipeline
+          </Link>
+        </div>
       </div>
 
       {/* ── States ──────────────────────────────────────── */}
@@ -239,70 +251,6 @@ export default function RunHistoryPage() {
       )}
 
       {/* ── Run cards ───────────────────────────────────── */}
-      {!loading && !error && total > 0 && (
-        <div
-          className="flex items-center justify-between gap-3"
-          style={{ marginBottom: "14px", flexWrap: "wrap" }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "11px",
-              color: "var(--text-tertiary)",
-            }}
-          >
-            Showing {rangeStart}-{rangeEnd} of {total}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
-                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                padding: "4px 10px",
-                cursor: page <= 1 ? "not-allowed" : "pointer",
-                opacity: page <= 1 ? 0.5 : 1,
-              }}
-            >
-              Prev
-            </button>
-            <span
-              style={{
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                color: "var(--text-tertiary)",
-                minWidth: "64px",
-                textAlign: "center",
-              }}
-            >
-              Page {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={page >= totalPages}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
-                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                padding: "4px 10px",
-                cursor: page >= totalPages ? "not-allowed" : "pointer",
-                opacity: page >= totalPages ? 0.5 : 1,
-              }}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-col gap-3">
         {pagedRuns.map((run) => {
           const status = overallStatus(run);
@@ -310,6 +258,8 @@ export default function RunHistoryPage() {
           const isConfirming = confirmingId === run.run_id;
           const isDeleting = deletingId === run.run_id;
           const isRunning = status === "running";
+          const isStagesExpanded = expandedStageRuns[run.run_id] ?? false;
+          const stagePanelId = `run-stage-progress-${run.run_id}`;
 
           return (
             <div
@@ -457,7 +407,7 @@ export default function RunHistoryPage() {
 
               {/* Meta */}
               <div
-                className="flex items-center gap-3 flex-wrap"
+                className="runs-page__run-meta"
                 style={{
                   fontFamily: "var(--font-jetbrains)",
                   fontSize: "10px",
@@ -481,14 +431,109 @@ export default function RunHistoryPage() {
                     {pluralize(run.produced_models_count, "model", "models")}
                   </Link>
                 )}
+                <button
+                  type="button"
+                  className={`runs-page__stage-toggle${isStagesExpanded ? " is-open" : ""}`}
+                  aria-expanded={isStagesExpanded}
+                  aria-controls={stagePanelId}
+                  aria-label={isStagesExpanded ? "Hide stage timings" : "Show stage timings"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedStageRuns((prev) => ({
+                      ...prev,
+                      [run.run_id]: !prev[run.run_id],
+                    }));
+                  }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                    <path
+                      d="M2 3.5L5 6.5L8 3.5"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
 
               {/* Stages */}
-              <StageProgress stages={run.stages} />
+              <div
+                id={stagePanelId}
+                className={`runs-page__stage-panel${isStagesExpanded ? " is-open" : ""}`}
+              >
+                <StageProgress stages={run.stages} />
+              </div>
             </div>
           );
         })}
       </div>
+
+      {!loading && !error && total > 0 && (
+        <div
+          className="runs-page__pagination-bar"
+          style={{ marginTop: "14px", flexWrap: "wrap" }}
+        >
+          <div
+            className="runs-page__pagination-summary"
+            style={{
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: "11px",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="runs-page__pagination-controls">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
+              }}
+            >
+              Prev
+            </button>
+            <span
+              style={{
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
+              }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

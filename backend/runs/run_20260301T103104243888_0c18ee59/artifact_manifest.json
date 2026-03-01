@@ -1,0 +1,87 @@
+{
+  "run_id": "run_20260301T103104243888_0c18ee59",
+  "created_at": "2026-03-01T10:31:04.248806+00:00",
+  "artifacts": [
+    {
+      "name": "preprocessed_data",
+      "path": "preprocessing\\preprocessed.parquet",
+      "type": "data",
+      "stage": "ingest_preprocess",
+      "size_bytes": 1669457,
+      "sha256": null,
+      "created_at": "2026-03-01T10:31:08.175581+00:00"
+    },
+    {
+      "name": "factor_scores",
+      "path": "psychometrics\\factor_scores.csv",
+      "type": "data",
+      "stage": "psychometrics",
+      "size_bytes": 1201463,
+      "sha256": null,
+      "created_at": "2026-03-01T10:31:08.649845+00:00"
+    },
+    {
+      "name": "evaluation_report",
+      "path": "reports\\evaluation_report.md",
+      "type": "report",
+      "stage": "reporting",
+      "size_bytes": 2401,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.766840+00:00"
+    },
+    {
+      "name": "model_card_detail_level_char_ngram_model_card",
+      "path": "reports\\model_cards\\detail_level_char_ngram_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1673,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.767821+00:00"
+    },
+    {
+      "name": "model_card_detail_level_tfidf_model_card",
+      "path": "reports\\model_cards\\detail_level_tfidf_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1652,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.767821+00:00"
+    },
+    {
+      "name": "model_card_language_char_ngram_model_card",
+      "path": "reports\\model_cards\\language_char_ngram_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1651,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.767821+00:00"
+    },
+    {
+      "name": "model_card_language_tfidf_model_card",
+      "path": "reports\\model_cards\\language_tfidf_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1630,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.767821+00:00"
+    },
+    {
+      "name": "model_card_sentiment_char_ngram_model_card",
+      "path": "reports\\model_cards\\sentiment_char_ngram_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1669,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.769603+00:00"
+    },
+    {
+      "name": "model_card_sentiment_tfidf_model_card",
+      "path": "reports\\model_cards\\sentiment_tfidf_model_card.md",
+      "type": "model_card",
+      "stage": "reporting",
+      "size_bytes": 1648,
+      "sha256": null,
+      "created_at": "2026-03-01T10:34:04.770135+00:00"
+    }
+  ]
+}

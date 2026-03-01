@@ -10,11 +10,13 @@ import {
   fetchDatasetSchema,
   fetchColumnRoles,
   fetchModelDetail,
+  fetchModelCompatibility,
   fetchModels,
   startAnalysis,
   DatasetSummary,
   DatasetBranch,
   DatasetVersion,
+  ModelCompatibility,
   ModelSummary,
 } from "@/app/lib/api";
 
@@ -52,6 +54,9 @@ export default function NewAnalysisPage() {
   // Data
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [models, setModels] = useState<ModelSummary[]>([]);
+  const [modelCompatibility, setModelCompatibility] = useState<
+    Record<string, ModelCompatibility>
+  >({});
   const [compatibleModelIds, setCompatibleModelIds] = useState<Set<string>>(new Set());
   const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -99,12 +104,34 @@ export default function NewAnalysisPage() {
     return "";
   }
 
+  function summarizeCompatibility(report?: ModelCompatibility): string {
+    if (!report) return "Checking compatibility...";
+    if (report.ok) return "Compatible with selected dataset";
+    if (report.reasons.length === 0) return "Incompatible with selected dataset";
+    return report.reasons
+      .map((reason) => {
+        const message =
+          typeof reason.message === "string" && reason.message.trim()
+            ? reason.message.trim()
+            : typeof reason.code === "string" && reason.code.trim()
+            ? reason.code.trim()
+            : "Incompatible with selected dataset";
+        const fix =
+          typeof reason.suggested_fix === "string" && reason.suggested_fix.trim()
+            ? ` Fix: ${reason.suggested_fix.trim()}`
+            : "";
+        return `${message}${fix}`;
+      })
+      .join(" | ");
+  }
+
   // Fetch branches when dataset changes
   useEffect(() => {
     if (!selectedDataset) {
       setDsBranches([]);
       setSelectedBranch(null);
       setModels([]);
+      setModelCompatibility({});
       setCompatibleModelIds(new Set());
       setSelectedModelIds([]);
       return;
@@ -220,21 +247,55 @@ export default function NewAnalysisPage() {
     if (step !== 1 || !selectedDataset) return;
     setModelsLoading(true);
     setModelsError(null);
-    Promise.all([
-      fetchModels({
-        dataset_id: selectedDataset.id,
-        per_page: 100,
-        sort: "created_at",
-        order: "desc",
-      }),
-      fetchModels({ per_page: 100, sort: "created_at", order: "desc" }),
-    ])
-      .then(([compatibleResp, allResp]) => {
+    fetchModels({ per_page: 100, sort: "created_at", order: "desc" })
+      .then(async (allResp) => {
         const allActive = allResp.models.filter((m) => m.status === "active");
-        const compatible = new Set(compatibleResp.models.map((m) => m.id));
-        for (const m of allActive) {
-          if (m.dataset_id == null) compatible.add(m.id);
+        const compatibilityEntries = await Promise.all(
+          allActive.map(async (model) => {
+            try {
+              const report = await fetchModelCompatibility(model.id, {
+                dataset_id: selectedDataset.id,
+                dataset_version: selectedVersion,
+                branch_id: selectedBranch,
+              });
+              return [model.id, report] as const;
+            } catch (error: unknown) {
+              return [
+                model.id,
+                {
+                  ok: false,
+                  reasons: [
+                    {
+                      code: "compatibility_check_failed",
+                      message:
+                        error instanceof Error
+                          ? error.message
+                          : "Compatibility check failed.",
+                      suggested_fix:
+                        "Retry the compatibility check or verify the selected dataset version.",
+                    },
+                  ],
+                  resolved_columns: {},
+                  required_roles: [],
+                  preprocess_spec_id: null,
+                  label_schema: {},
+                  schema_columns: [],
+                  text_col_used: null,
+                  label_col_used: null,
+                } as ModelCompatibility,
+              ] as const;
+            }
+          })
+        );
+
+        const nextCompatibility: Record<string, ModelCompatibility> = {};
+        const compatible = new Set<string>();
+        for (const [modelId, report] of compatibilityEntries) {
+          nextCompatibility[modelId] = report;
+          if (report.ok) compatible.add(modelId);
         }
+
+        setModelCompatibility(nextCompatibility);
         setCompatibleModelIds(compatible);
         setModels(allActive);
         setSelectedModelIds((prev) => prev.filter((id) => compatible.has(id)));
@@ -242,9 +303,10 @@ export default function NewAnalysisPage() {
       })
       .catch((e) => {
         setModelsError(e.message);
+        setModelCompatibility({});
         setModelsLoading(false);
       });
-  }, [step, selectedDataset]);
+  }, [step, selectedDataset, selectedVersion, selectedBranch]);
 
   useEffect(() => {
     if (modelPrefillApplied || models.length === 0) return;
@@ -297,7 +359,26 @@ export default function NewAnalysisPage() {
   }
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: "820px", margin: "0 auto" }}>
+    <div className="page-shell page-standard page-shell--sm animate-fade-up">
+      {/* Back link */}
+      <div style={{ marginBottom: "6px" }}>
+        <Link
+          href="/analyses"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--text-tertiary)",
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+          }}
+        >
+          <span aria-hidden="true">&larr;</span>
+          <span>Analyses</span>
+        </Link>
+      </div>
+
       {/* Header */}
       <h1
         style={{
@@ -315,7 +396,7 @@ export default function NewAnalysisPage() {
       </p>
 
       {/* Step indicators */}
-      <div className="flex gap-0" style={{ marginBottom: "32px" }}>
+      <div className="flex flex-wrap gap-y-3" style={{ marginBottom: "32px" }}>
         {STEP_LABELS.map((label, i) => (
           <div key={i} className="flex items-center">
             <div className="flex items-center gap-2">
@@ -564,7 +645,7 @@ export default function NewAnalysisPage() {
             Select Models
           </h2>
           <p style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
-            Select one or more registered models to apply. Incompatible models are shown but disabled.
+            Select one or more registered models to apply. Compatibility is checked against the selected dataset schema before launch.
           </p>
           {modelsError && (
             <div style={{ color: "var(--error, #ef4444)", fontSize: "13px", marginBottom: "12px" }}>
@@ -582,13 +663,15 @@ export default function NewAnalysisPage() {
 	              {models.map((m) => {
 	                const compatible = compatibleModelIds.has(m.id);
 	                const selected = selectedModelIds.includes(m.id);
+                    const compatibilityReport = modelCompatibility[m.id];
+                    const compatibilityHint = summarizeCompatibility(compatibilityReport);
                 const f1 = (m.metrics as { val?: { macro_f1?: number } })?.val?.macro_f1;
                 return (
 	                  <button
 	                    key={m.id}
 	                    onClick={() => toggleModel(m.id)}
 	                    disabled={!compatible}
-	                    title={compatible ? "Compatible with selected dataset" : "Trained on a different dataset"}
+	                    title={compatibilityHint}
 	                    style={{
                       textAlign: "left",
                       padding: "14px 16px",
@@ -618,7 +701,7 @@ export default function NewAnalysisPage() {
                     >
                       {selected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 700 }}>✓</span>}
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
 	                      <div style={{ fontWeight: 500, fontSize: "13px", color: compatible ? "var(--text-primary)" : "var(--text-tertiary)" }}>
                         {m.name}
                       </div>
@@ -627,6 +710,17 @@ export default function NewAnalysisPage() {
                         {f1 != null && ` · F1 ${(f1 * 100).toFixed(1)}%`}
                         {!compatible && " · trained on a different dataset"}
                       </div>
+                      {!compatible && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "var(--error, #ef4444)",
+                            marginTop: "6px",
+                          }}
+                        >
+                          {compatibilityHint}
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -729,11 +823,11 @@ export default function NewAnalysisPage() {
               </p>
               <div style={{ border: "1px solid var(--border-dim)", borderRadius: "6px", overflow: "hidden" }}>
                 {/* Header */}
-                <div className="flex" style={{ background: "var(--bg-base)", padding: "7px 12px", borderBottom: "1px solid var(--border-dim)" }}>
-                  <span style={{ flex: 1, fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-syne)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                <div className="flex" style={{ background: "var(--bg-base)", padding: "7px 12px", borderBottom: "1px solid var(--border-dim)", flexWrap: "wrap", gap: "4px 12px" }}>
+                  <span style={{ flex: "1 1 12rem", fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-syne)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
                     Dataset Column
                   </span>
-                  <span style={{ flex: 1, fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-syne)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                  <span style={{ flex: "1 1 12rem", fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-syne)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
                     System Role
                   </span>
                 </div>
@@ -746,12 +840,14 @@ export default function NewAnalysisPage() {
                       padding: "6px 12px",
                       borderBottom: idx < datasetColumns.length - 1 ? "1px solid var(--border-dim)" : "none",
                       background: columnRoles[col] === "text" ? "var(--gold-faint)" : "transparent",
+                      flexWrap: "wrap",
+                      gap: "8px 12px",
                     }}
                   >
-                    <span style={{ flex: 1, fontSize: "12px", color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)", paddingRight: "8px", wordBreak: "break-all" }}>
+                    <span style={{ flex: "1 1 12rem", fontSize: "12px", color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)", paddingRight: "8px", wordBreak: "break-all" }}>
                       {col}
                     </span>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
                       <select
                         value={columnRoles[col] ?? ""}
                         onChange={(e) => setColumnRoles((prev) => ({ ...prev, [col]: e.target.value }))}
@@ -896,4 +992,5 @@ export default function NewAnalysisPage() {
     </div>
   );
 }
+
 

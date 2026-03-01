@@ -1,0 +1,63 @@
+{
+  "task": "detail_level",
+  "model_type": "tfidf",
+  "seed": 50,
+  "hyperparameters": {
+    "model_type": "tfidf_logreg",
+    "max_features": 50000,
+    "ngram_range": [
+      1,
+      2
+    ],
+    "sublinear_tf": true,
+    "C": 1.0,
+    "max_iter": 1000,
+    "class_weight": "balanced",
+    "solver": "saga"
+  },
+  "classes": [
+    "long",
+    "medium",
+    "short"
+  ],
+  "train": {
+    "macro_f1": 0.9099903992089581,
+    "accuracy": 0.9098105548037889,
+    "per_class_f1": {
+      "long": 0.9183908045977012,
+      "medium": 0.9070695553021665,
+      "short": 0.9045108377270065
+    }
+  },
+  "val": {
+    "macro_f1": 0.8910161914182293,
+    "accuracy": 0.8885281385281385,
+    "per_class_f1": {
+      "long": 0.8952042628774423,
+      "medium": 0.8778443113772455,
+      "short": 0.9
+    },
+    "confusion_matrix": [
+      [
+        504,
+        63,
+        1
+      ],
+      [
+        53,
+        733,
+        81
+      ],
+      [
+        1,
+        7,
+        405
+      ]
+    ]
+  },
+  "predicted_class_distribution": {
+    "long": 0.30194805194805197,
+    "medium": 0.43452380952380953,
+    "short": 0.26352813852813856
+  }
+}

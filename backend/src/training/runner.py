@@ -10,12 +10,17 @@ from typing import Any
 import numpy as np
 import orjson
 import pandas as pd
-
-import orjson
-
-from src.ingest.loader import COLUMN_MAP
+from src.preprocessing.spec import DEFAULT_PREPROCESS_SPEC, apply_preprocess
+from src.schema import (
+    TASK_STANDARD_COLUMNS,
+    TEXT_COLUMN_CANDIDATES,
+    normalize_column_name,
+    normalize_dataframe_columns,
+    resolve_roles,
+)
 from src.storage.database import Database
 from src.storage.dataset_manager import DatasetManager
+from src.storage.model_signature import build_input_signature, build_training_profile
 from src.storage.model_registry import ModelRegistry
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
@@ -30,28 +35,14 @@ log = get_logger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-TASK_LABEL_COLS: dict[str, str] = {
-    "language": "language",
-    "sentiment": "sentiment_class",
-    "detail_level": "detail_level",
-}
+TASK_LABEL_COLS: dict[str, str] = dict(TASK_STANDARD_COLUMNS)
 
 VALID_TASKS = frozenset(TASK_LABEL_COLS.keys())
 VALID_MODEL_TYPES = frozenset({"tfidf", "char_ngram"})
 
-# Text column names tried in priority order when auto-detecting
-_TEXT_COL_CANDIDATES = [
-    "text_processed",
-    "text_feedback",
-    "text",
-    "feedback",
-    "comment",
-    "review",
-    "response",
-]
-
 MIN_SAMPLES_PER_CLASS = 5
 MIN_CLASSES = 2
+MODEL_INPUT_TEXT_COL = "text_model_input"
 
 # ---------------------------------------------------------------------------
 # In-memory job store (reset on restart — batch use only)
@@ -80,46 +71,14 @@ def _utcnow() -> str:
 
 
 def _detect_text_col(df: pd.DataFrame) -> str:
-    """Return the first matching text column, or the first object-dtype column."""
-    for candidate in _TEXT_COL_CANDIDATES:
-        if candidate in df.columns:
-            return candidate
-    for col in df.columns:
-        if df[col].dtype == object or df[col].dtype.kind in ("O", "U", "S"):
-            return col
+    """Return the resolved text column, or the first object-dtype column."""
+    resolved = resolve_roles(df=df, column_roles={}, overrides={})
+    if resolved.text_col is not None:
+        return resolved.text_col
     raise LabelValidationError(
         "No text column found in dataset. "
-        f"Expected one of: {_TEXT_COL_CANDIDATES}. "
+        f"Expected one of: {list(TEXT_COLUMN_CANDIDATES)}. "
         f"Available columns: {list(df.columns)}."
-    )
-
-
-def _detect_text_col_with_roles(
-    df: pd.DataFrame, column_roles: dict[str, str]
-) -> str:
-    """Detect text column using column_roles first, then fall back to auto-detection."""
-    for col, role in column_roles.items():
-        if role == "text" and col in df.columns:
-            return col
-    return _detect_text_col(df)
-
-
-def _detect_label_col_with_roles(
-    df: pd.DataFrame, column_roles: dict[str, str], task: str
-) -> str:
-    """Detect label column using column_roles first, then fall back to TASK_LABEL_COLS."""
-    for col, role in column_roles.items():
-        if role == task and col in df.columns:
-            return col
-    # Fall back to standard column name for task
-    default = TASK_LABEL_COLS.get(task, "")
-    if default and default in df.columns:
-        return default
-    raise LabelValidationError(
-        f"Label column for task '{task}' not found. "
-        f"Tried column_roles ({column_roles}) and default '{default}'. "
-        f"Available columns: {list(df.columns)}. "
-        f"Assign a column role 'text' and '{task}' in the dataset version settings."
     )
 
 
@@ -246,7 +205,7 @@ def _apply_class_balancing(
 
 
 def run_training(
-    dataset_id: str,
+    dataset_id: str | None,
     task: str,
     model_type: str,
     dataset_manager: DatasetManager,
@@ -259,6 +218,7 @@ def run_training(
     name: str | None = None,
     base_model_id: str | None = None,
     job_id: str | None = None,
+    data_path: str | None = None,
 ) -> dict[str, Any]:
     """
     Train a text classifier on a user dataset and auto-register in ModelRegistry.
@@ -280,43 +240,84 @@ def run_training(
     if base_model_id is None:
         base_model_id = config.base_model_id
 
-    # 1. Load dataset from storage
-    df = dataset_manager.get_dataframe(dataset_id, dataset_version, branch_id=branch_id)
-    if df is None or len(df) == 0:
-        raise LabelValidationError(
-            f"Dataset '{dataset_id}' is empty or not found."
-        )
+    # 1. Load dataset either from DatasetManager or directly from a CSV path.
+    if dataset_id:
+        df = dataset_manager.get_dataframe(dataset_id, dataset_version, branch_id=branch_id)
+        if df is None or len(df) == 0:
+            raise LabelValidationError(
+                f"Dataset '{dataset_id}' is empty or not found."
+            )
 
-    # 2. Load column_roles from version metadata (supports user-renamed columns)
-    # If branch_id is provided, get the head version's column roles
-    try:
-        if branch_id:
-            head = dataset_manager.get_branch_head_version(branch_id)
-            column_roles = dataset_manager.get_column_roles(dataset_id, version_id=head.id if head else None)
-        else:
-            column_roles = dataset_manager.get_column_roles(dataset_id, version=dataset_version)
-    except Exception:
+        # 2. Load column_roles from version metadata (supports user-renamed columns)
+        # If branch_id is provided, get the head version's column roles
+        try:
+            if branch_id:
+                head = dataset_manager.get_branch_head_version(branch_id)
+                column_roles = dataset_manager.get_column_roles(dataset_id, version_id=head.id if head else None)
+            else:
+                column_roles = dataset_manager.get_column_roles(dataset_id, version=dataset_version)
+        except Exception:
+            column_roles = {}
+    else:
+        if not data_path:
+            raise ValueError("Either dataset_id or data_path is required for training.")
+        csv_path = Path(data_path)
+        if not csv_path.exists():
+            raise FileNotFoundError(f"Training dataset not found: {csv_path}")
+        df = normalize_dataframe_columns(pd.read_csv(csv_path, encoding="utf-8", dtype=str))
+        if len(df) == 0:
+            raise LabelValidationError(f"Dataset '{csv_path}' is empty or not found.")
         column_roles = {}
 
     # 3. Resolve column names (config override → column_roles → auto-detect)
+    resolved = resolve_roles(df=df, column_roles=column_roles, overrides={})
     if config.label_col:
-        label_col = COLUMN_MAP.get(config.label_col.strip(), config.label_col.strip())
+        label_col = normalize_column_name(config.label_col)
+        if label_col not in df.columns:
+            raise LabelValidationError(
+                f"Label column '{label_col}' not found in dataset. "
+                f"Available columns: {list(df.columns)}. "
+                f"Task '{task}' requires column '{label_col}'."
+            )
     else:
-        label_col = _detect_label_col_with_roles(df, column_roles, task)
-        label_col = COLUMN_MAP.get(label_col.strip(), label_col.strip())
+        label_col = resolved.label_col_by_task.get(task)
+        if label_col is None:
+            default = TASK_LABEL_COLS.get(task, "")
+            raise LabelValidationError(
+                f"Label column for task '{task}' not found. "
+                f"Tried column_roles ({column_roles}) and default '{default}'. "
+                f"Available columns: {list(df.columns)}. "
+                f"Assign a column role 'text' and '{task}' in the dataset version settings."
+            )
 
     if config.text_col:
-        text_col = COLUMN_MAP.get(config.text_col.strip(), config.text_col.strip())
+        source_text_col = normalize_column_name(config.text_col)
+        if source_text_col not in df.columns:
+            raise LabelValidationError(
+                f"Text column '{source_text_col}' not found in dataset. "
+                f"Available columns: {list(df.columns)}."
+            )
     else:
-        text_col = _detect_text_col_with_roles(df, column_roles)
-        text_col = COLUMN_MAP.get(text_col.strip(), text_col.strip())
+        source_text_col = resolved.text_col
+        if source_text_col is None:
+            raise LabelValidationError(
+                "No text column found in dataset. "
+                f"Expected one of: {list(TEXT_COLUMN_CANDIDATES)}. "
+                f"Available columns: {list(df.columns)}."
+            )
+
+    df = apply_preprocess(df, text_col=source_text_col, spec=DEFAULT_PREPROCESS_SPEC)
+    df[MODEL_INPUT_TEXT_COL] = df["text_processed"]
+    text_col = MODEL_INPUT_TEXT_COL
 
     log.info(
         "training_start",
         dataset_id=dataset_id,
+        data_path=data_path,
         task=task,
         model_type=model_type,
         text_col=text_col,
+        source_text_col=source_text_col,
         label_col=label_col,
         n_rows=len(df),
     )
@@ -341,6 +342,8 @@ def run_training(
             f"Stratified split failed for task '{task}': {exc}. "
             "The dataset may be too small or a class may have too few samples."
         ) from exc
+
+    profile_train_df = train_df.copy()
 
     # 5. Class balancing on training set
     train_df = _apply_class_balancing(
@@ -457,7 +460,9 @@ def run_training(
         "n_val": len(val_df),
         "n_test": len(test_df),
         "text_col": text_col,
+        "source_text_col": source_text_col,
         "label_col": label_col,
+        "preprocess_spec_id": DEFAULT_PREPROCESS_SPEC.id,
     }
     if fine_tuning_info is not None:
         metrics["fine_tuning"] = fine_tuning_info
@@ -480,7 +485,25 @@ def run_training(
     metrics_path.write_bytes(orjson.dumps(metrics, option=orjson.OPT_INDENT_2))
 
     # 9. Auto-register in ModelRegistry
-    model_name = name or f"{task}_{model_type}_ds{dataset_id[:8]}"
+    dataset_name_suffix = dataset_id[:8] if dataset_id else "default"
+    model_name = name or f"{task}_{model_type}_ds{dataset_name_suffix}"
+    input_signature = build_input_signature(
+        task=task,
+        resolved_columns=resolved,
+        source_text_col=source_text_col,
+        model_input_col=text_col,
+        label_col=label_col,
+        preprocess_spec=DEFAULT_PREPROCESS_SPEC,
+        training_config=config.to_dict(),
+        classes=[str(value) for value in classes],
+    )
+    training_profile = build_training_profile(
+        df=profile_train_df,
+        text_col=text_col,
+        label_col=label_col,
+        task=task,
+        clf=clf,
+    )
     model_meta = model_registry.register_model(
         name=model_name,
         task=task,
@@ -488,12 +511,15 @@ def run_training(
         source_model_path=model_path,
         source_metrics_path=metrics_path,
         dataset_id=dataset_id,
-        dataset_version=dataset_version,
+        dataset_version=dataset_version if dataset_id else None,
         config=config.to_dict(),
         metrics=metrics,
         run_id=run_id,
         base_model_id=base_model_id,
         job_id=job_id,
+        input_signature=input_signature,
+        preprocess_spec=DEFAULT_PREPROCESS_SPEC.as_dict(),
+        training_profile=training_profile,
     )
 
     return {
@@ -659,7 +685,7 @@ def list_jobs_from_db(
 
 def run_job_background(
     job_id: str,
-    dataset_id: str,
+    dataset_id: str | None,
     task: str,
     model_type: str,
     dataset_manager: DatasetManager,
@@ -672,6 +698,7 @@ def run_job_background(
     name: str | None,
     base_model_id: str | None = None,
     db: Database | None = None,
+    data_path: str | None = None,
 ) -> None:
     """Execute training synchronously in a background thread."""
     started_at = _utcnow()
@@ -692,6 +719,7 @@ def run_job_background(
     try:
         result = run_training(
             dataset_id=dataset_id,
+            data_path=data_path,
             task=task,
             model_type=model_type,
             dataset_manager=dataset_manager,

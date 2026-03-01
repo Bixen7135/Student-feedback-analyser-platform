@@ -37,16 +37,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    href: "/models",
-    label: "Models",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <path d="M7 1L12.5 4V10L7 13L1.5 10V4L7 1Z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
-        <path d="M7 7L12.5 4M7 7L1.5 4M7 7V13" stroke="currentColor" strokeWidth="1.35" />
-      </svg>
-    ),
-  },
-  {
     href: "/runs",
     label: "Run History",
     icon: (
@@ -58,21 +48,11 @@ const navItems: NavItem[] = [
   },
   {
     href: "/runs/new",
-    label: "New Run",
+    label: "Run Pipeline",
     icon: (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.35" />
         <path d="M7 4.5V9.5M4.5 7H9.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    href: "/training",
-    label: "Training",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <path d="M2 11L5 7L7.5 9.5L10 5.5L12 8" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.35" />
       </svg>
     ),
   },
@@ -93,9 +73,13 @@ const STATUS_CONFIG: Record<ApiStatus, { label: string; color: string; pulse: bo
   offline: { label: "api | offline", color: "var(--error, #ef4444)", pulse: false },
 };
 
+const MOBILE_NAV_MEDIA_QUERY = "(max-width: 56rem)";
+
 export function Sidebar() {
   const pathname = usePathname();
   const [apiStatus, setApiStatus] = useState<ApiStatus>("connecting");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,155 +103,150 @@ export function Sidebar() {
     };
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(MOBILE_NAV_MEDIA_QUERY);
+    const syncViewport = (event?: MediaQueryListEvent) => {
+      const nextIsMobileViewport = event?.matches ?? mediaQuery.matches;
+      setIsMobileViewport(nextIsMobileViewport);
+
+      if (!nextIsMobileViewport) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    syncViewport();
+
+    if ("addEventListener" in mediaQuery) {
+      mediaQuery.addEventListener("change", syncViewport);
+    } else {
+      mediaQuery.addListener(syncViewport);
+    }
+
+    return () => {
+      if ("removeEventListener" in mediaQuery) {
+        mediaQuery.removeEventListener("change", syncViewport);
+      } else {
+        mediaQuery.removeListener(syncViewport);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport || !isMobileMenuOpen) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileMenuOpen, isMobileViewport]);
+
+  const disableNavTabbing = isMobileViewport && !isMobileMenuOpen;
+
   return (
-    <aside
-      className="flex-shrink-0 flex flex-col sticky top-0"
-      style={{
-        width: "216px",
-        height: "100vh",
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border-dim)",
-      }}
-    >
-      <div
-        className="flex items-center gap-3 px-5"
-        style={{
-          padding: "18px 20px",
-          borderBottom: "1px solid var(--border-dim)",
-        }}
-      >
-        <div
-          className="flex items-center justify-center rounded flex-shrink-0"
-          style={{
-            width: "28px",
-            height: "28px",
-            background: "var(--gold-faint)",
-            border: "1px solid var(--gold-muted)",
-          }}
+    <aside className={`app-sidebar${isMobileMenuOpen ? " is-mobile-open" : ""}`}>
+      <div className="app-sidebar__mobile-bar">
+        <div className="app-sidebar__brand">
+          <div className="app-sidebar__brand-mark">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path
+                d="M1.5 10.5L5 2.5L6 5.5M6 5.5L9 10.5M6 5.5L10 2"
+                stroke="var(--gold)"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="app-sidebar__brand-meta">
+            <div className="app-sidebar__brand-title">Feedback Lab</div>
+            <div className="app-sidebar__brand-version">v0.1.0</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="app-sidebar__mobile-toggle"
+          aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="app-sidebar-drawer"
+          onClick={() => setIsMobileMenuOpen((open) => !open)}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path
-              d="M1.5 10.5L5 2.5L6 5.5M6 5.5L9 10.5M6 5.5L10 2"
-              stroke="var(--gold)"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <div>
-          <div
-            style={{
-              fontFamily: "var(--font-syne)",
-              fontWeight: 700,
-              fontSize: "12px",
-              letterSpacing: "0.09em",
-              textTransform: "uppercase",
-              color: "var(--text-primary)",
-              lineHeight: 1.2,
-            }}
-          >
-            Feedback Lab
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "10px",
-              color: "var(--text-tertiary)",
-              marginTop: "2px",
-            }}
-          >
-            v0.1.0
-          </div>
-        </div>
+          <span className="app-sidebar__mobile-toggle-line" />
+          <span className="app-sidebar__mobile-toggle-line" />
+          <span className="app-sidebar__mobile-toggle-line" />
+        </button>
       </div>
 
-      <nav className="flex-1 flex flex-col" style={{ padding: "16px 12px 8px" }}>
-        <div
-          style={{
-            fontFamily: "var(--font-syne)",
-            fontSize: "9.5px",
-            fontWeight: 700,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "var(--text-tertiary)",
-            padding: "0 8px 10px",
-          }}
-        >
-          Navigation
-        </div>
-        <div className="flex flex-col gap-0.5">
-          {navItems.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : item.href === "/runs"
-                ? pathname === "/runs" ||
-                  (pathname.startsWith("/runs/") &&
-                    !pathname.startsWith("/runs/new"))
-                : item.href === "/datasets"
-                ? pathname === "/datasets" || pathname.startsWith("/datasets/")
-                : pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-2.5 rounded transition-all duration-100"
-                style={{
-                  padding: "7px 10px",
-                  background: isActive ? "var(--gold-faint)" : "transparent",
-                  color: isActive ? "var(--gold)" : "var(--text-secondary)",
-                  borderLeft: `2px solid ${isActive ? "var(--gold)" : "transparent"}`,
-                  marginLeft: "-1px",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 500 : 400,
-                }}
-              >
-                <span style={{ opacity: isActive ? 1 : 0.6, flexShrink: 0 }}>
-                  {item.icon}
-                </span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      {isMobileMenuOpen ? (
+        <button
+          type="button"
+          className="app-sidebar__mobile-overlay"
+          aria-label="Close navigation menu"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      ) : null}
 
       <div
-        style={{
-          padding: "14px 20px",
-          borderTop: "1px solid var(--border-dim)",
-        }}
+        id="app-sidebar-drawer"
+        className="app-sidebar__drawer"
+        aria-hidden={isMobileViewport ? !isMobileMenuOpen : undefined}
       >
-        <div className="flex items-center gap-2" style={{ marginBottom: "5px" }}>
-          <span
-            className="rounded-full flex-shrink-0"
-            style={{
-              width: "6px",
-              height: "6px",
-              background: STATUS_CONFIG[apiStatus].color,
-              opacity: STATUS_CONFIG[apiStatus].pulse ? 0.7 : 1,
-              transition: "background 0.3s",
-            }}
-          />
-          <span
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "10px",
-              color: "var(--text-tertiary)",
-            }}
-          >
-            {STATUS_CONFIG[apiStatus].label}
-          </span>
-        </div>
-        <div
-          style={{
-            fontFamily: "var(--font-jetbrains)",
-            fontSize: "10px",
-            color: "var(--text-tertiary)",
-          }}
-        >
-          RU | KZ | multilingual
+        <nav className="app-sidebar__nav">
+          <div className="app-sidebar__label">Navigation</div>
+          <div className="app-sidebar__list">
+            {navItems.map((item) => {
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : item.href === "/runs"
+                  ? pathname === "/runs" ||
+                    pathname.startsWith("/models") ||
+                    (pathname.startsWith("/runs/") &&
+                      !pathname.startsWith("/runs/new"))
+                  : item.href === "/datasets"
+                  ? pathname === "/datasets" || pathname.startsWith("/datasets/")
+                  : item.href === "/runs/new"
+                  ? pathname === "/runs/new" || pathname.startsWith("/training")
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`app-sidebar__link${isActive ? " is-active" : ""}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  tabIndex={disableNavTabbing ? -1 : undefined}
+                >
+                  <span className="app-sidebar__icon">{item.icon}</span>
+                  <span className="app-sidebar__text">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className="app-sidebar__footer">
+          <div className="app-sidebar__status-row">
+            <span
+              className={`app-sidebar__status-dot${STATUS_CONFIG[apiStatus].pulse ? " animate-pulse-dot" : ""}`}
+              style={{
+                background: STATUS_CONFIG[apiStatus].color,
+                opacity: STATUS_CONFIG[apiStatus].pulse ? 0.7 : 1,
+              }}
+            />
+            <span className="app-sidebar__status-copy">{STATUS_CONFIG[apiStatus].label}</span>
+          </div>
+          <div className="app-sidebar__locale">RU | KZ | multilingual</div>
         </div>
       </div>
     </aside>

@@ -76,7 +76,10 @@ CREATE TABLE IF NOT EXISTS models (
     status          TEXT NOT NULL DEFAULT 'active', -- active | archived
     storage_path    TEXT NOT NULL DEFAULT '',
     run_id          TEXT,
-    base_model_id   TEXT                     -- set when fine-tuned from an existing model
+    base_model_id   TEXT,                    -- set when fine-tuned from an existing model
+    input_signature TEXT NOT NULL DEFAULT '{}',
+    preprocess_spec TEXT NOT NULL DEFAULT '{}',
+    training_profile TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS analysis_runs (
@@ -252,6 +255,12 @@ class Database:
         # Add job_id to models if missing (Phase 1 migration)
         if "job_id" not in existing_m:
             conn.execute("ALTER TABLE models ADD COLUMN job_id TEXT")
+        if "input_signature" not in existing_m:
+            conn.execute("ALTER TABLE models ADD COLUMN input_signature TEXT NOT NULL DEFAULT '{}'")
+        if "preprocess_spec" not in existing_m:
+            conn.execute("ALTER TABLE models ADD COLUMN preprocess_spec TEXT NOT NULL DEFAULT '{}'")
+        if "training_profile" not in existing_m:
+            conn.execute("ALTER TABLE models ADD COLUMN training_profile TEXT NOT NULL DEFAULT '{}'")
 
         # Rename analysis_runs.run_id → pipeline_run_id (Phase 1 migration)
         existing_ar = {row[1] for row in conn.execute("PRAGMA table_info(analysis_runs)").fetchall()}

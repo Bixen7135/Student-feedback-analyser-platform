@@ -1,0 +1,29 @@
+{
+  "cronbach_alpha": {
+    "program_quality": 0.9240329974630558,
+    "resources_teaching": 0.9211007931663795,
+    "digital_assessment": 0.9225394726304462
+  },
+  "mcdonald_omega": {
+    "program_quality": 0.5979125097069123,
+    "resources_teaching": 0.5984362889154656,
+    "digital_assessment": 0.6002295397673016
+  },
+  "alpha_if_item_deleted": {
+    "program_quality": {
+      "item_1": 0.8917849980345309,
+      "item_2": 0.8893548263304412,
+      "item_3": 0.889525674701479
+    },
+    "resources_teaching": {
+      "item_4": 0.8873370473857429,
+      "item_5": 0.8876073039020942,
+      "item_6": 0.8834807302515415
+    },
+    "digital_assessment": {
+      "item_7": 0.8917713244894026,
+      "item_8": 0.8869077791961115,
+      "item_9": 0.8857446770782946
+    }
+  }
+}

@@ -20,6 +20,7 @@ from src.api.routes.datasets import router as datasets_router
 from src.api.routes.models import router as models_router
 from src.api.routes.training import router as training_router
 from src.api.routes.analyses import router as analyses_router
+from src.api.routes.analytics import router as analytics_router
 from src.api.routes.saved_filters import router as saved_filters_router
 from src.api.routes.summary import router as summary_router
 from src.utils.logging import configure_logging
@@ -52,6 +53,7 @@ app.include_router(datasets_router)
 app.include_router(models_router)
 app.include_router(training_router)
 app.include_router(analyses_router)
+app.include_router(analytics_router)
 app.include_router(saved_filters_router)
 app.include_router(summary_router)
 

@@ -7,35 +7,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import orjson
 import pandas as pd
 
-from src.ingest.loader import COLUMN_MAP
+from src.inference.engine import check_compatibility, run_inference
+from src.schema import DatasetSchemaSnapshot, normalize_column_name, resolve_roles
 from src.storage.database import Database
 from src.storage.dataset_manager import DatasetManager
 from src.storage.model_registry import ModelRegistry
-from src.text_tasks.tfidf_classifier import TfidfClassifier
-from src.text_tasks.char_ngram_classifier import CharNgramClassifier
-from src.text_tasks.base import TextClassifier
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-# Text column names tried in priority order when auto-detecting
-_TEXT_COL_CANDIDATES = [
-    "text_processed",
-    "text_feedback",
-    "text",
-    "feedback",
-    "comment",
-    "review",
-    "response",
-]
 
 # ---------------------------------------------------------------------------
 # In-memory job store (reset on restart — batch use only)
@@ -55,28 +37,8 @@ def _utcnow() -> str:
 
 
 def _detect_text_col(df: pd.DataFrame) -> str | None:
-    """Return the first matching text column, or the first object-dtype column."""
-    for candidate in _TEXT_COL_CANDIDATES:
-        if candidate in df.columns:
-            return candidate
-    for col in df.columns:
-        if df[col].dtype == object or df[col].dtype.kind in ("O", "U", "S"):
-            return col
-    return None
-
-
-def _load_classifier(model_path: Path, model_type: str) -> TextClassifier:
-    """Load a text classifier from disk by model_type."""
-    if model_type == "tfidf":
-        return TfidfClassifier.load(model_path)
-    elif model_type == "char_ngram":
-        return CharNgramClassifier.load(model_path)
-    raise ValueError(f"Unknown model_type: {model_type!r}")
-
-
-# ---------------------------------------------------------------------------
-# Core analysis function
-# ---------------------------------------------------------------------------
+    """Return the resolved text column, or None when no string column exists."""
+    return resolve_roles(df=df, column_roles={}, overrides={}).text_col
 
 
 def run_analysis(
@@ -117,12 +79,29 @@ def run_analysis(
     )
 
     # 2. Resolve text column (explicit override or auto-detect)
-    text_col = text_col or _detect_text_col(df)
-
-    # Normalize: map any Russian/localised name to the internal English name,
-    # and strip leading/trailing whitespace (including newlines from raw CSV headers).
     if text_col:
-        text_col = COLUMN_MAP.get(text_col.strip(), text_col.strip())
+        text_col = normalize_column_name(text_col)
+        if text_col not in df.columns:
+            raise ValueError(
+                f"Text column '{text_col}' not found in dataset. "
+                f"Available columns: {list(df.columns)}."
+            )
+    compatibility_roles = (
+        {normalize_column_name(text_col): "text"}
+        if text_col
+        else {}
+    )
+    resolved_columns = resolve_roles(
+        df=df,
+        column_roles=compatibility_roles,
+        overrides={"text_col": text_col} if text_col else {},
+    )
+    text_col = resolved_columns.text_col
+    dataset_schema = DatasetSchemaSnapshot(
+        columns=tuple(str(col) for col in df.columns),
+        normalized_columns=tuple(normalize_column_name(col) for col in df.columns),
+        column_roles=compatibility_roles,
+    )
 
     # 3. Prepare results DataFrame (copy of original)
     results_df = df.copy()
@@ -136,14 +115,21 @@ def run_analysis(
             log.warning("model_not_found", model_id=model_id)
             continue
 
-        try:
-            model_path = model_registry.load_model_artifact(model_id)
-            clf = _load_classifier(model_path, model_meta.model_type)
-        except Exception as exc:
-            log.error(
-                "model_load_failed",
-                model_id=model_id,
-                error=str(exc),
+        compatibility = check_compatibility(
+            model_meta=model_meta,
+            dataset_schema=dataset_schema,
+            resolved_columns=resolved_columns,
+        )
+
+        # Build prediction column names using short model_id prefix
+        mid_short = model_id[:8]
+        pred_col = f"{model_meta.task}_{mid_short}_pred"
+        conf_col = f"{model_meta.task}_{mid_short}_conf"
+
+        if not compatibility["ok"]:
+            error_message = "; ".join(
+                str(reason.get("message") or reason.get("code") or "incompatible")
+                for reason in compatibility["reasons"]
             )
             models_applied.append(
                 {
@@ -151,47 +137,37 @@ def run_analysis(
                     "model_name": model_meta.name,
                     "task": model_meta.task,
                     "model_type": model_meta.model_type,
-                    "error": str(exc),
+                    "error": error_message,
                     "pred_col": None,
                     "conf_col": None,
                     "n_predicted": 0,
                     "class_distribution": {},
                     "classes": [],
+                    "compatibility": compatibility,
+                    "preprocess_spec_applied": compatibility.get("preprocess_spec_id"),
+                    "text_col_used": compatibility.get("text_col_used"),
+                    "model_input_col": None,
                 }
+            )
+            log.warning(
+                "model_incompatible",
+                analysis_id=analysis_id,
+                model_id=model_id,
+                reasons=compatibility["reasons"],
             )
             continue
 
-        # Build prediction column names using short model_id prefix
-        mid_short = model_id[:8]
-        pred_col = f"{model_meta.task}_{mid_short}_pred"
-        conf_col = f"{model_meta.task}_{mid_short}_conf"
-
-        # Predict on all rows, using empty string for missing text
-        if text_col is not None:
-            texts = results_df[text_col].fillna("").astype(str).tolist()
-        else:
-            texts = [""] * len(results_df)
-
         try:
-            preds = clf.predict(texts)
-            try:
-                probas = clf.predict_proba(texts)
-                # confidence = probability of predicted class
-                class_list = clf.classes_
-                conf_vals = np.array(
-                    [probas[i, class_list.index(preds[i])] for i in range(len(preds))]
-                )
-            except Exception:
-                conf_vals = np.full(len(preds), float("nan"))
+            inference = run_inference(
+                df=df,
+                model_meta=model_meta,
+                resolved_columns=resolved_columns,
+            )
+            preds = inference["predictions"]
+            conf_vals = inference["confidences"]
 
             results_df[pred_col] = preds
             results_df[conf_col] = conf_vals
-
-            # Compute class distribution
-            pred_series = pd.Series(preds)
-            counts = pred_series.value_counts()
-            class_dist = {str(k): round(float(v) / len(preds), 4) for k, v in counts.items()}
-            n_predicted = int((~pd.Series(preds).isna()).sum())
 
             models_applied.append(
                 {
@@ -202,9 +178,13 @@ def run_analysis(
                     "error": None,
                     "pred_col": pred_col,
                     "conf_col": conf_col,
-                    "n_predicted": n_predicted,
-                    "class_distribution": class_dist,
-                    "classes": clf.classes_,
+                    "n_predicted": inference["n_predicted"],
+                    "class_distribution": inference["class_distribution"],
+                    "classes": inference["classes"],
+                    "compatibility": inference["compatibility"],
+                    "preprocess_spec_applied": inference["preprocess_spec_applied"],
+                    "text_col_used": inference["text_col_used"],
+                    "model_input_col": inference["model_input_col"],
                 }
             )
             log.info(
@@ -212,7 +192,7 @@ def run_analysis(
                 analysis_id=analysis_id,
                 model_id=model_id,
                 task=model_meta.task,
-                n_predicted=n_predicted,
+                n_predicted=inference["n_predicted"],
             )
         except Exception as exc:
             log.error(
@@ -232,6 +212,10 @@ def run_analysis(
                     "n_predicted": 0,
                     "class_distribution": {},
                     "classes": [],
+                    "compatibility": compatibility,
+                    "preprocess_spec_applied": compatibility.get("preprocess_spec_id"),
+                    "text_col_used": compatibility.get("text_col_used"),
+                    "model_input_col": None,
                 }
             )
 
@@ -600,18 +584,6 @@ def get_summary_path(artifacts_dir: Path, analysis_id: str) -> Path:
     return artifacts_dir / analysis_id / "summary.json"
 
 
-# Phase 5: text column candidates reused for anomaly detection
-_TEXT_COL_CANDIDATES_FOR_ANOMALY = [
-    "text_processed",
-    "text_feedback",
-    "text",
-    "feedback",
-    "comment",
-    "review",
-    "response",
-]
-
-
 def _apply_result_filters(
     df: pd.DataFrame,
     filter_col: str | None = None,
@@ -885,12 +857,7 @@ def get_anomalies(
     df = pd.read_csv(path, dtype=str, keep_default_na=False)
     conf_cols = [c for c in df.columns if c.endswith("_conf")]
 
-    # Find the first text column
-    text_col: str | None = None
-    for candidate in _TEXT_COL_CANDIDATES_FOR_ANOMALY:
-        if candidate in df.columns:
-            text_col = candidate
-            break
+    text_col = _detect_text_col(df)
 
     anomaly_data: list[dict[str, Any]] = []
     for i in range(len(df)):

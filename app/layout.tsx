@@ -8,6 +8,7 @@ const syne = Syne({
   weight: ["400", "600", "700", "800"],
   variable: "--font-syne",
   display: "swap",
+  preload: false,
 });
 
 const dmSans = DM_Sans({
@@ -15,6 +16,7 @@ const dmSans = DM_Sans({
   weight: ["300", "400", "500"],
   variable: "--font-dm-sans",
   display: "swap",
+  preload: false,
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -22,6 +24,7 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500"],
   variable: "--font-jetbrains",
   display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -40,14 +43,9 @@ export default function RootLayout({
       lang="en"
       className={`${syne.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="flex" style={{ minHeight: "100vh" }}>
+      <body className="app-frame">
         <Sidebar />
-        <main
-          className="flex-1 overflow-y-auto"
-          style={{ minHeight: "100vh", minWidth: 0 }}
-        >
-          {children}
-        </main>
+        <main className="app-main">{children}</main>
       </body>
     </html>
   );

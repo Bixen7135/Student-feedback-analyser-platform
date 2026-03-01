@@ -214,7 +214,7 @@ export default function TrainingJobPage() {
 
   if (error) {
     return (
-      <div style={{ padding: "32px", maxWidth: "720px" }}>
+      <div className="page-shell page-standard page-shell--sm">
         <div
           style={{
             background: "rgba(239,68,68,0.08)",
@@ -262,11 +262,11 @@ export default function TrainingJobPage() {
   const classes = job.metrics?.classes as string[] | undefined;
 
   return (
-    <div style={{ padding: "32px", maxWidth: "800px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--sm animate-fade-up">
       {/* Header */}
       <div
-        className="flex items-start justify-between"
-        style={{ marginBottom: "24px" }}
+        className="flex items-start justify-between gap-4"
+        style={{ marginBottom: "24px", flexWrap: "wrap" }}
       >
         <div>
           <div className="flex items-center gap-3" style={{ marginBottom: "6px" }}>
@@ -292,7 +292,21 @@ export default function TrainingJobPage() {
             {job.job_id}
           </div>
         </div>
-        <Link
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <Link
+            href="/runs/new"
+            style={{
+              fontSize: "12px",
+              color: "var(--text-secondary)",
+              textDecoration: "none",
+              border: "1px solid var(--border)",
+              borderRadius: "6px",
+              padding: "6px 12px",
+            }}
+          >
+            Run Pipeline
+          </Link>
+          <Link
           href="/training"
           style={{
             fontSize: "12px",
@@ -304,7 +318,8 @@ export default function TrainingJobPage() {
           }}
         >
           ← All Jobs
-        </Link>
+          </Link>
+        </div>
       </div>
 
       {/* Live spinner for running/pending */}
@@ -359,7 +374,10 @@ export default function TrainingJobPage() {
         <div style={sectionTitle}>Job Details</div>
         <MetricRow label="Task" value={TASK_LABELS[job.task] ?? job.task} />
         <MetricRow label="Model type" value={MODEL_LABELS[job.model_type] ?? job.model_type} />
-        <MetricRow label="Dataset" value={job.dataset_id} />
+        <MetricRow
+          label={job.dataset_id.endsWith(".csv") ? "Source file" : "Dataset"}
+          value={job.dataset_id}
+        />
         <MetricRow label="Seed" value={String(job.seed)} />
         {job.started_at && (
           <MetricRow

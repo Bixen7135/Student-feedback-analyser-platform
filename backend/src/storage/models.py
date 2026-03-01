@@ -78,6 +78,9 @@ class ModelMeta(BaseModel):
     run_id: str | None = None
     base_model_id: str | None = None  # set when fine-tuned from an existing model
     job_id: str | None = None          # training job that produced this model
+    input_signature: dict = Field(default_factory=dict)
+    preprocess_spec: dict = Field(default_factory=dict)
+    training_profile: dict = Field(default_factory=dict)
 
 
 class AnalysisRunMeta(BaseModel):

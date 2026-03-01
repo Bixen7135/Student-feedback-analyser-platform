@@ -1,10 +1,13 @@
 """Unit tests for preprocessing modules."""
 from __future__ import annotations
 
+import orjson
 import pytest
 from src.preprocessing.normalize import normalize_unicode, normalize_punctuation, preprocess_text
 from src.preprocessing.redact import redact_pii
 from src.preprocessing.features import compute_text_features
+from src.preprocessing.pipeline import save_preprocessed
+from src.preprocessing.spec import PREPROCESS_SPEC_ID, apply_preprocess
 
 
 def test_normalize_unicode_nfc():
@@ -78,3 +81,26 @@ def test_compute_text_features_empty():
     assert features.word_count == 0
     assert features.char_count == 0
     assert features.avg_word_length == 0.0
+
+
+def test_apply_preprocess_carries_spec_id():
+    import pandas as pd
+
+    df = pd.DataFrame({"text_feedback": ["  test@email.com  "]})
+    processed = apply_preprocess(df, text_col="text_feedback")
+
+    assert processed.attrs["preprocess_spec_id"] == PREPROCESS_SPEC_ID
+    assert processed.attrs["preprocess_spec"]["id"] == PREPROCESS_SPEC_ID
+
+
+def test_save_preprocessed_persists_spec_id(tmp_path):
+    import pandas as pd
+
+    df = pd.DataFrame({"text_feedback": ["hello"]})
+    processed = apply_preprocess(df, text_col="text_feedback")
+
+    out_path = save_preprocessed(processed, tmp_path)
+    metadata = orjson.loads((tmp_path / "preprocessing" / "metadata.json").read_bytes())
+
+    assert out_path.exists()
+    assert metadata["id"] == PREPROCESS_SPEC_ID

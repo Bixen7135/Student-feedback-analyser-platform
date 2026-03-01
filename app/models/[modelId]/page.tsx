@@ -170,15 +170,7 @@ export default function ModelDetailPage({
   });
 
   return (
-    <div
-      style={{
-        padding: "32px",
-        maxWidth: "800px",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-      className="animate-fade-up"
-    >
+    <div className="page-shell page-standard page-shell--sm animate-fade-up">
       <button
         onClick={() => router.push("/models")}
         style={{

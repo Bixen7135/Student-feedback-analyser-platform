@@ -72,7 +72,7 @@ export default function DatasetsPage() {
   const totalPages = Math.ceil(total / perPage);
 
   return (
-    <div style={{ padding: "32px", maxWidth: "960px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--md animate-fade-up">
       {/* Header */}
       <div
         className="flex items-center justify-between"
@@ -117,20 +117,14 @@ export default function DatasetsPage() {
             )}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="datasets-page__header-actions">
           <Link
             href="/datasets/create"
-            className="inline-flex items-center gap-2 rounded-lg"
+            className="datasets-page__header-action datasets-page__header-action--secondary"
             style={{
               background: "var(--bg-elevated)",
               border: "1px solid var(--border)",
               color: "var(--text-secondary)",
-              padding: "8px 16px",
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "var(--font-syne)",
-              letterSpacing: "0.04em",
-              textDecoration: "none",
             }}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -140,16 +134,10 @@ export default function DatasetsPage() {
           </Link>
           <Link
             href="/datasets/upload"
-            className="inline-flex items-center gap-2 rounded-lg"
+            className="datasets-page__header-action datasets-page__header-action--primary"
             style={{
               background: "var(--gold)",
               color: "#08080B",
-              padding: "8px 16px",
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "var(--font-syne)",
-              letterSpacing: "0.04em",
-              textDecoration: "none",
             }}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
@@ -521,3 +509,4 @@ export default function DatasetsPage() {
     </div>
   );
 }
+

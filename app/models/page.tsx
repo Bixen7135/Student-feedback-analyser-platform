@@ -153,50 +153,116 @@ export default function ModelsPage() {
   } as const;
 
   return (
-    <div style={{ padding: "32px", maxWidth: "960px" }} className="animate-fade-up">
-      {/* Header */}
-      <div style={{ marginBottom: "28px" }}>
-        <div
+    <div className="page-shell page-standard page-shell--md animate-fade-up">
+      <div style={{ marginBottom: "6px" }}>
+        <button
+          type="button"
+          onClick={() => router.back()}
           style={{
-            fontFamily: "var(--font-syne)",
-            fontSize: "9.5px",
-            fontWeight: 700,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
             color: "var(--text-tertiary)",
-            marginBottom: "6px",
+            background: "none",
+            border: "none",
+            padding: 0,
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+            cursor: "pointer",
           }}
         >
-          Model Management
+          <span aria-hidden="true">&larr;</span>
+          <span>Back</span>
+        </button>
+      </div>
+
+      {/* Header */}
+      <div
+        className="flex items-start justify-between gap-3"
+        style={{ marginBottom: "28px", flexWrap: "wrap" }}
+      >
+        <div>
+          <div
+            style={{
+              fontFamily: "var(--font-syne)",
+              fontSize: "9.5px",
+              fontWeight: 700,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "var(--text-tertiary)",
+              marginBottom: "6px",
+            }}
+          >
+            Model Management
+          </div>
+          <h1
+            style={{
+              fontFamily: "var(--font-syne)",
+              fontWeight: 700,
+              fontSize: "22px",
+              color: "var(--text-primary)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Models
+            {!loading && (
+              <span
+                style={{
+                  fontFamily: "var(--font-jetbrains)",
+                  fontSize: "12px",
+                  fontWeight: 400,
+                  color: "var(--text-tertiary)",
+                  marginLeft: "10px",
+                }}
+              >
+                {total} total
+              </span>
+            )}
+          </h1>
         </div>
-        <h1
-          style={{
-            fontFamily: "var(--font-syne)",
-            fontWeight: 700,
-            fontSize: "22px",
-            color: "var(--text-primary)",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Models
-          {!loading && (
-            <span
+        {lineageRunId && (
+          <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+            <Link
+              href={`/runs/${lineageRunId}`}
+              className="inline-flex items-center gap-2 rounded-lg"
               style={{
-                fontFamily: "var(--font-jetbrains)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                padding: "8px 14px",
                 fontSize: "12px",
-                fontWeight: 400,
-                color: "var(--text-tertiary)",
-                marginLeft: "10px",
+                fontWeight: 600,
+                fontFamily: "var(--font-syne)",
+                letterSpacing: "0.04em",
+                textDecoration: "none",
+                border: "1px solid var(--border-dim)",
               }}
             >
-              {total} total
-            </span>
-          )}
-        </h1>
+              Open Run
+            </Link>
+            <Link
+              href="/runs"
+              className="inline-flex items-center gap-2 rounded-lg"
+              style={{
+                background: "transparent",
+                color: "var(--text-secondary)",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                fontFamily: "var(--font-syne)",
+                letterSpacing: "0.04em",
+                textDecoration: "none",
+                border: "1px solid var(--border-dim)",
+              }}
+            >
+              Back to Runs
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3" style={{ marginBottom: "16px" }}>
+      <div className="flex items-center gap-3" style={{ marginBottom: "16px", flexWrap: "wrap" }}>
         <select
           value={taskFilter}
           onChange={(e) => { setTaskFilter(e.target.value); setPage(1); }}
@@ -250,7 +316,7 @@ export default function ModelsPage() {
               cursor: "pointer",
             }}
           >
-            Clear
+            View all models
           </button>
         </div>
       )}
@@ -311,70 +377,6 @@ export default function ModelsPage() {
                 ? "This run has not produced any models."
                 : "This run has not produced any active models."
               : "Train a model to see it here."}
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && total > 0 && (
-        <div
-          className="flex items-center justify-between gap-3"
-          style={{ marginBottom: "14px", flexWrap: "wrap" }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "11px",
-              color: "var(--text-tertiary)",
-            }}
-          >
-            Showing {rangeStart}-{rangeEnd} of {total}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
-                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                padding: "4px 10px",
-                cursor: page <= 1 ? "not-allowed" : "pointer",
-                opacity: page <= 1 ? 0.5 : 1,
-              }}
-            >
-              Prev
-            </button>
-            <span
-              style={{
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                color: "var(--text-tertiary)",
-                minWidth: "64px",
-                textAlign: "center",
-              }}
-            >
-              Page {page} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={page >= totalPages}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
-                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
-                fontFamily: "var(--font-jetbrains)",
-                fontSize: "10px",
-                padding: "4px 10px",
-                cursor: page >= totalPages ? "not-allowed" : "pointer",
-                opacity: page >= totalPages ? 0.5 : 1,
-              }}
-            >
-              Next
-            </button>
           </div>
         </div>
       )}
@@ -601,6 +603,77 @@ export default function ModelsPage() {
           );
         })}
       </div>
+
+      {!loading && !error && total > 0 && (
+        <div
+          style={{
+            marginTop: "14px",
+            display: "grid",
+            alignItems: "center",
+            gap: "12px",
+            gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-jetbrains)",
+              fontSize: "11px",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
+              }}
+            >
+              Prev
+            </button>
+            <span
+              style={{
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "6px",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
+              }}
+            >
+              Next
+            </button>
+          </div>
+          <div aria-hidden="true" />
+        </div>
+      )}
     </div>
   );
 }
+

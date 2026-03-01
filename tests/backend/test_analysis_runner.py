@@ -42,7 +42,11 @@ def _train_model_for_analysis(tmp: Path, dataset_manager, model_registry, task="
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     ds_list, _ = dataset_manager.list_datasets()
-    dataset_id = ds_list[0].id
+    dataset = next(
+        (item for item in ds_list if item.name == "analysis_test_ds"),
+        ds_list[0],
+    )
+    dataset_id = dataset.id
 
     result = run_training(
         dataset_id=dataset_id,
@@ -176,6 +180,10 @@ class TestRunAnalysis:
         assert m["n_predicted"] == 45
         assert m["pred_col"] is not None
         assert m["conf_col"] is not None
+        assert m["compatibility"]["ok"] is True
+        assert m["preprocess_spec_applied"] == "preprocess_v1"
+        assert m["text_col_used"] == "text_feedback"
+        assert m["model_input_col"] == "text_model_input"
         assert len(m["class_distribution"]) >= 2
         # distribution should sum to ~1
         total = sum(m["class_distribution"].values())
@@ -297,6 +305,46 @@ class TestRunAnalysis:
         tasks = {m["task"] for m in result["models_applied"]}
         assert "sentiment" in tasks
         assert "language" in tasks
+
+    def test_missing_text_column_is_a_hard_compatibility_failure(self, storage):
+        """A dataset without a text column should mark the model incompatible."""
+        from src.analysis.runner import get_results_path, run_analysis
+
+        db = storage["db"]
+        dm = storage["dataset_manager"]
+        mr = storage["model_registry"]
+        tmp = storage["tmp"]
+
+        model_id, _ = _train_model_for_analysis(tmp, dm, mr, task="sentiment")
+
+        numeric_csv = tmp / "numeric_only.csv"
+        pd.DataFrame({"q1": [1, 2, 3], "q2": [4, 5, 6]}).to_csv(numeric_csv, index=False)
+        numeric_dataset = dm.upload_dataset(file_path=numeric_csv, name="numeric_only")
+
+        artifacts_dir = tmp / "analysis_runs"
+        analysis_id = "test_analysis_no_text"
+
+        result = run_analysis(
+            dataset_id=numeric_dataset.id,
+            model_ids=[model_id],
+            dataset_manager=dm,
+            model_registry=mr,
+            db=db,
+            artifacts_dir=artifacts_dir,
+            analysis_id=analysis_id,
+        )
+
+        assert len(result["models_applied"]) == 1
+        applied = result["models_applied"][0]
+        assert applied["error"] is not None
+        assert applied["n_predicted"] == 0
+        assert applied["pred_col"] is None
+        assert applied["compatibility"]["ok"] is False
+        assert applied["compatibility"]["reasons"][0]["code"] == "missing_required_role"
+        assert applied["text_col_used"] == "q1"
+
+        results_df = pd.read_csv(get_results_path(artifacts_dir, analysis_id))
+        assert all(not col.endswith("_pred") for col in results_df.columns)
 
 
 # ---------------------------------------------------------------------------

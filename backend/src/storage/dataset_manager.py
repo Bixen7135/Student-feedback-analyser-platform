@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -12,94 +11,17 @@ from typing import Any
 import orjson
 import pandas as pd
 
-from src.ingest.loader import COLUMN_MAP
+from src.schema import (
+    infer_column_roles,
+    normalize_dataframe_columns,
+    propagate_column_roles,
+    standardize_role_columns,
+)
 from src.storage.database import Database
 from src.storage.models import ColumnSchema, DatasetBranch, DatasetMeta, DatasetVersion
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Column-role detection constants (mirrors training/runner.py without circular dep)
-# ---------------------------------------------------------------------------
-
-_TEXT_COL_CANDIDATES = [
-    "text_processed",
-    "text_feedback",
-    "text",
-    "feedback",
-    "comment",
-    "review",
-    "response",
-]
-
-_TASK_ROLE_COLS: dict[str, str] = {
-    "language": "language",
-    "sentiment": "sentiment_class",
-    "detail_level": "detail_level",
-}
-
-# Reverse: role → standard column name used throughout the pipeline.
-_ROLE_TO_STANDARD: dict[str, str] = {
-    "text": "text_feedback",
-    "sentiment": "sentiment_class",
-    "language": "language",
-    "detail_level": "detail_level",
-}
-
-# Fallback aliases used when version column_roles are missing/incomplete.
-# Kept intentionally conservative to avoid accidental wrong mappings.
-_STANDARD_COL_ALIASES: dict[str, set[str]] = {
-    "text_feedback": {
-        "textfeedback",
-        "text",
-        "feedback",
-        "comment",
-        "review",
-        "response",
-    },
-    "sentiment_class": {
-        "sentimentclass",
-        "sentiment",
-        "\u0442\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u044c\u043a\u043b\u0430\u0441\u0441",
-        "\u043a\u043b\u0430\u0441\u0441\u0442\u043e\u043d\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u0438",
-    },
-    "language": {
-        "language",
-        "\u044f\u0437\u044b\u043a",
-    },
-    "detail_level": {
-        "detaillevel",
-        "length",
-        "\u0434\u043b\u0438\u043d\u0430",
-    },
-}
-
-
-def _compact_col_name(name: str) -> str:
-    """Normalize a column name for fuzzy alias matching."""
-    return re.sub(r"[\W_]+", "", str(name).strip().lower(), flags=re.UNICODE)
-
-
-def _fallback_standard_renames(df: pd.DataFrame) -> dict[str, str]:
-    """Infer safe renames to canonical pipeline column names by known aliases."""
-    renames: dict[str, str] = {}
-    by_compact: dict[str, list[str]] = {}
-    for col in df.columns:
-        key = _compact_col_name(col)
-        by_compact.setdefault(key, []).append(col)
-
-    for standard, aliases in _STANDARD_COL_ALIASES.items():
-        if standard in df.columns:
-            continue
-        candidates: list[str] = []
-        for alias in aliases:
-            candidates.extend(by_compact.get(alias, []))
-        # Avoid ambiguous remaps if multiple source columns match.
-        unique_candidates = list(dict.fromkeys(candidates))
-        if len(unique_candidates) == 1:
-            renames[unique_candidates[0]] = standard
-    return renames
 
 
 def _utcnow() -> str:
@@ -130,28 +52,16 @@ def _infer_schema(df: pd.DataFrame) -> list[ColumnSchema]:
 
 
 def _detect_initial_column_roles(df: pd.DataFrame) -> dict[str, str]:
-    """Detect initial column roles from column names."""
-    roles: dict[str, str] = {}
-    cols = set(df.columns)
-    for cand in _TEXT_COL_CANDIDATES:
-        if cand in cols:
-            roles[cand] = "text"
-            break
-    for role, col in _TASK_ROLE_COLS.items():
-        if col in cols:
-            roles[col] = role
-    return roles
+    """Backward-compatible wrapper around shared role inference."""
+    return infer_column_roles(df)
 
 
 def _propagate_column_roles(
-    existing_roles: dict[str, str], renames: dict[str, str]
+    existing_roles: dict[str, str],
+    renames: dict[str, str],
 ) -> dict[str, str]:
-    """Apply column renames to an existing column_roles mapping."""
-    updated: dict[str, str] = {}
-    for col, role in existing_roles.items():
-        new_col = renames.get(col, col)
-        updated[new_col] = role
-    return updated
+    """Backward-compatible wrapper around shared role propagation."""
+    return propagate_column_roles(existing_roles, renames)
 
 
 class DatasetValidationError(Exception):
@@ -229,11 +139,9 @@ class DatasetManager:
         dataset_id = str(uuid.uuid4())
         sha = _sha256(file_path)
         file_size = file_path.stat().st_size
-        df_for_schema = df.copy()
-        df_for_schema.columns = [c.strip() for c in df_for_schema.columns]
-        df_for_schema = df_for_schema.rename(columns=COLUMN_MAP)
+        df_for_schema = normalize_dataframe_columns(df.copy())
         schema_info = _infer_schema(df_for_schema)
-        column_roles = _detect_initial_column_roles(df_for_schema)
+        column_roles = infer_column_roles(df_for_schema)
         now = _utcnow()
 
         # Create "main" branch first (we need its ID for the version record)
@@ -1427,7 +1335,7 @@ class DatasetManager:
             if head is not None:
                 column_roles = dict(head.column_roles)
             else:
-                column_roles = _detect_initial_column_roles(df)
+                column_roles = infer_column_roles(df)
 
         version_meta = {
             "id": version_id,
@@ -1639,7 +1547,7 @@ class DatasetManager:
             existing_roles = dict(head.column_roles)
         elif ds.current_version:
             existing_roles = self.get_column_roles(dataset_id)
-        new_roles = _propagate_column_roles(existing_roles, renames)
+        new_roles = propagate_column_roles(existing_roles, renames)
 
         df = df.rename(columns=renames)
         return self.create_version(dataset_id, df, reason=reason, author=author,
@@ -1679,7 +1587,7 @@ class DatasetManager:
             ColumnSchema(name=col, dtype="object", n_unique=0, n_null=0, sample_values=[])
             for col in columns
         ]
-        column_roles = _detect_initial_column_roles(df)
+        column_roles = infer_column_roles(df)
 
         version_id = str(uuid.uuid4())
         version_meta = {
@@ -1754,9 +1662,8 @@ class DatasetManager:
         """Load a dataset version as a DataFrame.
 
         If branch_id is given and version is None, loads the head of that branch.
-        Applies COLUMN_MAP renaming (Russian → English), then normalises any
-        user-renamed columns back to their standard pipeline names using the
-        stored column_roles for that version.
+        Headers are normalized through the shared schema contract and any
+        user-renamed role columns are mapped back to canonical pipeline names.
         """
         ds = self.get_dataset(dataset_id)
         if ds is None:
@@ -1794,8 +1701,7 @@ class DatasetManager:
             actual_version = ds.current_version
 
         df = pd.read_csv(file_path, encoding="utf-8", dtype=str)
-        df.columns = [c.strip() for c in df.columns]
-        df = df.rename(columns=COLUMN_MAP)
+        original_columns = tuple(str(col) for col in df.columns)
 
         # Second pass: normalise user-renamed columns via column_roles.
         # e.g. if the user renamed "sentiment_class" → "Класс Тональности",
@@ -1806,24 +1712,21 @@ class DatasetManager:
             version_id=actual_version_id,
             version=actual_version,
         )
-        role_renames = {
-            col: _ROLE_TO_STANDARD[role]
-            for col, role in col_roles.items()
-            if role in _ROLE_TO_STANDARD
-            and col in df.columns
-            and col != _ROLE_TO_STANDARD[role]
-        }
-        if role_renames:
-            df = df.rename(columns=role_renames)
-
-        # Final safety net for legacy versions where column_roles were not persisted.
-        fallback_renames = _fallback_standard_renames(df)
-        if fallback_renames:
-            df = df.rename(columns=fallback_renames)
+        df = standardize_role_columns(df, col_roles)
+        if tuple(str(col) for col in df.columns) != original_columns:
             log.info(
                 "dataset_column_aliases_normalized",
-                renamed_count=len(fallback_renames),
-                targets=sorted(set(fallback_renames.values())),
+                renamed_count=sum(
+                    1 for before, after in zip(original_columns, df.columns, strict=False)
+                    if before != after
+                ),
+                targets=sorted(
+                    {
+                        str(after)
+                        for before, after in zip(original_columns, df.columns, strict=False)
+                        if before != after
+                    }
+                ),
             )
 
         return df

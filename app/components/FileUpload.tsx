@@ -40,13 +40,12 @@ export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProp
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
       onClick={() => { if (!disabled) inputRef.current?.click(); }}
-      className="flex flex-col items-center justify-center rounded-lg transition-all duration-150"
+      className={`ui-dropzone flex flex-col items-center justify-center transition-all duration-150${
+        dragging ? " is-dragging" : ""
+      }${disabled ? " is-disabled" : ""}`}
       style={{
-        border: `2px dashed ${dragging ? "var(--gold)" : "var(--border)"}`,
-        background: dragging ? "var(--gold-faint)" : "var(--bg-elevated)",
-        padding: "32px 20px",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
+        borderColor: dragging ? "var(--gold)" : undefined,
+        background: dragging ? "var(--gold-faint)" : undefined,
       }}
     >
       <input
@@ -61,7 +60,7 @@ export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProp
         height="28"
         viewBox="0 0 28 28"
         fill="none"
-        style={{ marginBottom: "10px", opacity: 0.5 }}
+        className="ui-dropzone__icon"
       >
         <path
           d="M14 18V8M14 8L10 12M14 8L18 12"
@@ -78,37 +77,11 @@ export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProp
         />
       </svg>
       {fileName ? (
-        <div
-          style={{
-            fontFamily: "var(--font-jetbrains)",
-            fontSize: "12px",
-            color: "var(--gold)",
-          }}
-        >
-          {fileName}
-        </div>
+        <div className="ui-dropzone__name">{fileName}</div>
       ) : (
         <>
-          <div
-            style={{
-              fontFamily: "var(--font-syne)",
-              fontSize: "13px",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              marginBottom: "4px",
-            }}
-          >
-            Drop CSV file here
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "10px",
-              color: "var(--text-tertiary)",
-            }}
-          >
-            or click to browse
-          </div>
+          <div className="ui-dropzone__title">Drop CSV file here</div>
+          <div className="ui-dropzone__hint">or click to browse</div>
         </>
       )}
     </div>

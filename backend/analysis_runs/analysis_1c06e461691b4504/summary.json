@@ -1,0 +1,420 @@
+{
+  "analysis_id": "analysis_1c06e461691b4504",
+  "dataset_id": "ba559537-a06d-473f-bf82-177466b0aa17",
+  "dataset_version": null,
+  "branch_id": null,
+  "n_rows": 18476,
+  "n_rows_processed": 18476,
+  "text_col": "text_feedback",
+  "models_applied": [
+    {
+      "model_id": "659d21b9-e03b-42c1-b6ad-94fdf041fea2",
+      "model_name": "pipeline_detail_level_char_ngram_run_20260228",
+      "task": "detail_level",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "detail_level_659d21b9_pred",
+      "conf_col": "detail_level_659d21b9_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "medium": 0.478,
+        "long": 0.2954,
+        "short": 0.2266
+      },
+      "classes": [
+        "long",
+        "medium",
+        "short"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "detail_level",
+          "column": "detail_level",
+          "class_order": [
+            "long",
+            "medium",
+            "short"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "detail_level"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    },
+    {
+      "model_id": "a6312ca1-2fda-4714-bc49-d93134c8fed6",
+      "model_name": "pipeline_detail_level_tfidf_run_20260228",
+      "task": "detail_level",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "detail_level_a6312ca1_pred",
+      "conf_col": "detail_level_a6312ca1_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "medium": 0.4506,
+        "long": 0.2955,
+        "short": 0.2539
+      },
+      "classes": [
+        "long",
+        "medium",
+        "short"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "detail_level",
+          "column": "detail_level",
+          "class_order": [
+            "long",
+            "medium",
+            "short"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "detail_level"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    },
+    {
+      "model_id": "4fba3d0b-29d9-4d63-b845-ca3f1058e757",
+      "model_name": "pipeline_sentiment_char_ngram_run_20260228",
+      "task": "sentiment",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "sentiment_4fba3d0b_pred",
+      "conf_col": "sentiment_4fba3d0b_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "positive": 0.5565,
+        "neutral": 0.3489,
+        "negative": 0.0947
+      },
+      "classes": [
+        "negative",
+        "neutral",
+        "positive"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "sentiment",
+          "column": "sentiment_class",
+          "class_order": [
+            "negative",
+            "neutral",
+            "positive"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "sentiment_class"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    },
+    {
+      "model_id": "ba797532-a341-40e6-826b-4048aa299b9c",
+      "model_name": "pipeline_sentiment_tfidf_run_20260228",
+      "task": "sentiment",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "sentiment_ba797532_pred",
+      "conf_col": "sentiment_ba797532_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "positive": 0.556,
+        "neutral": 0.3495,
+        "negative": 0.0946
+      },
+      "classes": [
+        "negative",
+        "neutral",
+        "positive"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "sentiment",
+          "column": "sentiment_class",
+          "class_order": [
+            "negative",
+            "neutral",
+            "positive"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "sentiment_class"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    },
+    {
+      "model_id": "ef21cec4-ac6e-46d7-bd12-87d8ae9131b1",
+      "model_name": "pipeline_language_char_ngram_run_20260228",
+      "task": "language",
+      "model_type": "char_ngram",
+      "error": null,
+      "pred_col": "language_ef21cec4_pred",
+      "conf_col": "language_ef21cec4_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "ru": 0.6086,
+        "kz": 0.2408,
+        "mixed": 0.1506
+      },
+      "classes": [
+        "kz",
+        "mixed",
+        "ru"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "language",
+          "column": "language",
+          "class_order": [
+            "kz",
+            "mixed",
+            "ru"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "language"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    },
+    {
+      "model_id": "7f943949-a8ab-4c85-9459-72929c6e8303",
+      "model_name": "pipeline_language_tfidf_run_20260228",
+      "task": "language",
+      "model_type": "tfidf",
+      "error": null,
+      "pred_col": "language_7f943949_pred",
+      "conf_col": "language_7f943949_conf",
+      "n_predicted": 18476,
+      "class_distribution": {
+        "ru": 0.6074,
+        "kz": 0.2386,
+        "mixed": 0.154
+      },
+      "classes": [
+        "kz",
+        "mixed",
+        "ru"
+      ],
+      "compatibility": {
+        "ok": true,
+        "reasons": [],
+        "resolved_columns": {
+          "text_col": "text_feedback",
+          "label_col_by_task": {
+            "language": "language",
+            "sentiment": "sentiment_class",
+            "detail_level": "detail_level"
+          },
+          "language_col": "language",
+          "detail_col": "detail_level"
+        },
+        "required_roles": [
+          "text"
+        ],
+        "preprocess_spec_id": "preprocess_v1",
+        "label_schema": {
+          "role": "language",
+          "column": "language",
+          "class_order": [
+            "kz",
+            "mixed",
+            "ru"
+          ]
+        },
+        "schema_columns": [
+          "survey_id",
+          "item_1",
+          "item_2",
+          "item_3",
+          "item_4",
+          "item_5",
+          "item_6",
+          "item_7",
+          "item_8",
+          "item_9",
+          "text_feedback",
+          "language",
+          "detail_level",
+          "sentiment_class"
+        ],
+        "text_col_used": "text_feedback",
+        "label_col_used": "language"
+      },
+      "preprocess_spec_applied": "preprocess_v1",
+      "text_col_used": "text_feedback",
+      "model_input_col": "text_processed"
+    }
+  ],
+  "created_at": "2026-02-28T13:39:38.194518+00:00"
+}

@@ -706,7 +706,7 @@ export default function DatasetDetailPage({
   );
 
   return (
-    <div style={{ padding: "32px", maxWidth: "960px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--md animate-fade-up">
       {/* Back link */}
       <div style={{ marginBottom: "6px" }}>
         <button
@@ -725,7 +725,7 @@ export default function DatasetDetailPage({
       )}
 
       {/* Dataset info card */}
-      <div className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-dim)", padding: "20px 24px", marginBottom: "20px" }}>
+      <div className="rounded-xl dataset-detail__hero" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-dim)", padding: "20px 24px", marginBottom: "20px" }}>
         {editing ? (
           <div className="flex flex-col gap-3">
             <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder="Dataset name" />
@@ -743,40 +743,69 @@ export default function DatasetDetailPage({
           </div>
         ) : (
           <>
-            <div className="flex items-start justify-between" style={{ marginBottom: "8px" }}>
-              <div>
-                <h1 style={{ fontFamily: "var(--font-syne)", fontWeight: 700, fontSize: "20px", color: "var(--text-primary)", marginBottom: "4px" }}>{ds.name}</h1>
-                {ds.description && <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "8px" }}>{ds.description}</div>}
-                <div className="flex flex-wrap gap-1.5" style={{ marginBottom: "8px" }}>
+            <div className="dataset-detail__hero-header" style={{ marginBottom: "8px" }}>
+              <div className="dataset-detail__hero-main">
+                <h1 className="dataset-detail__hero-title" style={{ fontFamily: "var(--font-syne)", fontWeight: 700, fontSize: "20px", color: "var(--text-primary)", marginBottom: "4px" }}>{ds.name}</h1>
+                {ds.description && <div className="dataset-detail__hero-description" style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "8px" }}>{ds.description}</div>}
+                <div className="dataset-detail__hero-tags flex flex-wrap gap-1.5" style={{ marginBottom: "8px" }}>
                   {ds.tags.map((tag) => (
                     <span key={tag} className="rounded" style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)" }}>{tag}</span>
                   ))}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setEditing(true)} style={{ ...btnBase, background: "var(--bg-elevated)", color: "var(--text-secondary)" }}>Edit</button>
+              <div className="dataset-detail__hero-actions">
+                <button
+                  type="button"
+                  className="dataset-detail__hero-action-btn"
+                  onClick={() => setEditing(true)}
+                  style={{ ...btnBase, background: "var(--bg-elevated)", color: "var(--text-secondary)" }}
+                >
+                  Edit
+                </button>
                 {confirmDelete ? (
-                  <div className="flex items-center gap-2">
-                    <button onClick={handleDelete} style={{ ...btnBase, background: "var(--error-dim)", border: "1px solid var(--error)", color: "var(--error)" }}>Confirm Delete</button>
-                    <button onClick={() => setConfirmDelete(false)} style={{ ...btnBase, background: "transparent", color: "var(--text-tertiary)" }}>Cancel</button>
+                  <div className="dataset-detail__hero-delete-actions">
+                    <button
+                      type="button"
+                      className="dataset-detail__hero-action-btn dataset-detail__hero-action-btn--danger"
+                      onClick={handleDelete}
+                      style={{ ...btnBase, background: "var(--error-dim)", border: "1px solid var(--error)", color: "var(--error)" }}
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="dataset-detail__hero-action-btn dataset-detail__hero-action-btn--muted"
+                      onClick={() => setConfirmDelete(false)}
+                      style={{ ...btnBase, background: "transparent", color: "var(--text-tertiary)" }}
+                    >
+                      Cancel
+                    </button>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmDelete(true)} style={{ ...btnBase, background: "transparent", color: "var(--text-tertiary)" }}>Delete</button>
+                  <button
+                    type="button"
+                    className="dataset-detail__hero-action-btn dataset-detail__hero-action-btn--muted"
+                    onClick={() => setConfirmDelete(true)}
+                    style={{ ...btnBase, background: "transparent", color: "var(--text-tertiary)" }}
+                  >
+                    Delete
+                  </button>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-5" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
-              <span>{ds.row_count.toLocaleString()} rows</span>
-              <span>{ds.schema_info.length} columns</span>
-              <span>{formatBytes(ds.file_size_bytes)}</span>
-              <span>v{ds.current_version}</span>
-              {ds.author && <span>by {ds.author}</span>}
-              <span>{new Date(ds.created_at).toLocaleString()}</span>
+            <div className="dataset-detail__hero-stats" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
+              <span className="dataset-detail__hero-stat">{ds.row_count.toLocaleString()} rows</span>
+              <span className="dataset-detail__hero-stat">{ds.schema_info.length} columns</span>
+              <span className="dataset-detail__hero-stat">{formatBytes(ds.file_size_bytes)}</span>
+              <span className="dataset-detail__hero-stat">v{ds.current_version}</span>
+              {ds.author && <span className="dataset-detail__hero-stat">by {ds.author}</span>}
+              <span className="dataset-detail__hero-stat">{new Date(ds.created_at).toLocaleString()}</span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: "12px" }}>
+            <div className="dataset-detail__hero-cta-grid" style={{ marginTop: "12px" }}>
               <Link
                 href={`/training?dataset_id=${datasetId}`}
+                className="dataset-detail__hero-cta dataset-detail__hero-cta--primary"
                 style={{
                   background: "var(--gold)",
                   color: "#08080B",
@@ -792,6 +821,7 @@ export default function DatasetDetailPage({
               </Link>
               <Link
                 href={`/analyses/new?dataset_id=${datasetId}`}
+                className="dataset-detail__hero-cta dataset-detail__hero-cta--secondary"
                 style={{
                   background: "var(--bg-elevated)",
                   color: "var(--text-secondary)",
@@ -806,13 +836,31 @@ export default function DatasetDetailPage({
               >
                 Start Analysis
               </Link>
+              <Link
+                href={`/datasets/${datasetId}/analytics`}
+                className="dataset-detail__hero-cta dataset-detail__hero-cta--ghost"
+                style={{
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-syne)",
+                  textDecoration: "none",
+                }}
+              >
+                View Analytics
+              </Link>
             </div>
 
             {/* Branch selector */}
             {branches.length > 0 && (
-              <div className="flex items-center gap-2" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border-dim)" }}>
-                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>Branch:</span>
+              <div className="dataset-detail__branch-bar" style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid var(--border-dim)" }}>
+                <span className="dataset-detail__branch-label" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>Branch:</span>
                 <select
+                  className="dataset-detail__branch-select"
                   value={activeBranchId ?? ""}
                   onChange={(e) => setActiveBranchId(e.target.value || null)}
                   style={selectStyle}
@@ -825,17 +873,19 @@ export default function DatasetDetailPage({
                 </select>
                 {activeBranch && !activeBranch.is_default && (
                   <button
+                    type="button"
+                    className="dataset-detail__branch-action"
                     onClick={() => handleSetDefaultBranch(activeBranch.id)}
                     style={{ ...btnBase, background: "var(--bg-elevated)", color: "var(--gold)", border: "1px solid var(--gold-muted)", fontSize: "10px" }}
                   >
                     Set as default
                   </button>
                 )}
-                {activeBranch && (
-                  <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
+                {activeBranch?.description ? (
+                  <span className="dataset-detail__branch-meta" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
                     {activeBranch.description ? `— ${activeBranch.description}` : ""}
                   </span>
-                )}
+                ) : null}
               </div>
             )}
           </>
@@ -843,11 +893,37 @@ export default function DatasetDetailPage({
       </div>
 
       {/* Tabs */}
-      <div className="flex items-end" style={{ borderBottom: "1px solid var(--border-dim)", marginBottom: "16px" }}>
-        <button style={tabStyle("preview")} onClick={() => setTab("preview")}>Preview</button>
-        <button style={tabStyle("schema")} onClick={() => setTab("schema")}>Schema</button>
-        <button style={tabStyle("versions")} onClick={() => setTab("versions")}>Versions</button>
-        <button style={tabStyle("branches")} onClick={() => setTab("branches")}>
+      <div className="dataset-detail__tabs" style={{ borderBottom: "1px solid var(--border-dim)", marginBottom: "16px" }}>
+        <button
+          type="button"
+          className={`dataset-detail__tab${tab === "preview" ? " is-active" : ""}`}
+          style={tabStyle("preview")}
+          onClick={() => setTab("preview")}
+        >
+          Preview
+        </button>
+        <button
+          type="button"
+          className={`dataset-detail__tab${tab === "schema" ? " is-active" : ""}`}
+          style={tabStyle("schema")}
+          onClick={() => setTab("schema")}
+        >
+          Schema
+        </button>
+        <button
+          type="button"
+          className={`dataset-detail__tab${tab === "versions" ? " is-active" : ""}`}
+          style={tabStyle("versions")}
+          onClick={() => setTab("versions")}
+        >
+          Versions
+        </button>
+        <button
+          type="button"
+          className={`dataset-detail__tab${tab === "branches" ? " is-active" : ""}`}
+          style={tabStyle("branches")}
+          onClick={() => setTab("branches")}
+        >
           Branches
           {branches.length > 0 && (
             <span style={{ marginLeft: "5px", background: "var(--bg-base)", borderRadius: "10px", padding: "1px 5px", fontSize: "9px", color: "var(--text-tertiary)" }}>
@@ -860,11 +936,17 @@ export default function DatasetDetailPage({
       {/* ===== PREVIEW TAB ===== */}
       {tab === "preview" && (
         <>
-          <div className="flex items-center gap-3" style={{ marginBottom: "12px", flexWrap: "wrap" }}>
+          <div className="dataset-detail__preview-toolbar" style={{ marginBottom: "12px" }}>
             {branchVersions.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>Version:</span>
+              <div className="dataset-detail__preview-version">
+                <span
+                  className="dataset-detail__preview-label"
+                  style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}
+                >
+                  Version:
+                </span>
                 <select
+                  className="dataset-detail__preview-select"
                   value={previewVersion ?? "latest"}
                   onChange={(e) => {
                     const v = e.target.value === "latest" ? null : parseInt(e.target.value);
@@ -890,6 +972,8 @@ export default function DatasetDetailPage({
                 </span>
                 {selectedPreviewVersion && (
                   <button
+                    type="button"
+                    className="dataset-detail__preview-secondary-action"
                     onClick={() => handleRestoreVersion(selectedPreviewVersion.id, selectedPreviewVersion.version)}
                     disabled={versionActionSaving}
                     style={{ ...btnBase, background: "transparent", color: "var(--text-secondary)", fontSize: "10px", padding: "3px 10px", opacity: versionActionSaving ? 0.6 : 1 }}
@@ -901,6 +985,8 @@ export default function DatasetDetailPage({
             )}
             {!isReadOnlyVersion && (
               <button
+                type="button"
+                className="dataset-detail__preview-action"
                 onClick={addNewRow}
                 style={{ marginLeft: "auto", ...btnBase, background: "var(--bg-elevated)", color: "var(--text-secondary)" }}
               >

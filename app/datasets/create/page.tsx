@@ -83,7 +83,7 @@ export default function CreateDatasetPage() {
   };
 
   return (
-    <div style={{ padding: "32px", maxWidth: "600px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--xs animate-fade-up">
       {/* Back */}
       <button
         onClick={() => router.push("/datasets")}
@@ -208,19 +208,37 @@ export default function CreateDatasetPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3" style={{ paddingTop: "4px" }}>
+          <div
+            style={{
+              paddingTop: "4px",
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "0.75rem",
+              width: "100%",
+              maxWidth: "42rem",
+              marginInline: "auto",
+              alignItems: "stretch",
+            }}
+          >
             <button
+              type="button"
               onClick={handleCreate}
               disabled={creating}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                minHeight: "2.75rem",
                 background: "var(--gold)",
                 color: "#08080B",
                 border: "none",
                 borderRadius: "6px",
-                padding: "9px 20px",
+                padding: "0.625rem 1rem",
                 fontSize: "13px",
                 fontWeight: 600,
                 fontFamily: "var(--font-syne)",
+                textAlign: "center",
                 cursor: creating ? "default" : "pointer",
                 opacity: creating ? 0.7 : 1,
               }}
@@ -228,8 +246,25 @@ export default function CreateDatasetPage() {
               {creating ? "Creating…" : "Create Dataset"}
             </button>
             <button
+              type="button"
               onClick={() => router.push("/datasets")}
-              style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "6px", padding: "9px 20px", fontSize: "13px", color: "var(--text-secondary)", fontFamily: "var(--font-syne)", cursor: "pointer" }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                minHeight: "2.75rem",
+                background: "transparent",
+                border: "1px solid var(--border)",
+                borderRadius: "6px",
+                padding: "0.625rem 1rem",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                fontFamily: "var(--font-syne)",
+                textAlign: "center",
+                cursor: "pointer",
+              }}
             >
               Cancel
             </button>
@@ -239,3 +274,4 @@ export default function CreateDatasetPage() {
     </div>
   );
 }
+

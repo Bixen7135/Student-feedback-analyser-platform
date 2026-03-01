@@ -15,7 +15,10 @@ import pandas as pd
 from src.config import load_config, get_system_info, ProjectConfig
 from src.ingest.loader import load_dataset
 from src.ingest.snapshot import create_snapshot
-from src.preprocessing.pipeline import run_preprocessing, save_preprocessed
+from src.preprocessing.pipeline import save_preprocessed
+from src.preprocessing.spec import DEFAULT_PREPROCESS_SPEC, apply_preprocess
+from src.schema import resolve_roles
+from src.storage.model_signature import build_input_signature
 from src.psychometrics.runner import run_psychometrics
 from src.splits.splitter import stratified_split, validate_split_no_leakage
 from src.text_tasks.trainer import train_all_baselines
@@ -144,7 +147,7 @@ def run_full_pipeline(
                         option=orjson.OPT_INDENT_2,
                     )
                 )
-            df = run_preprocessing(df_raw)
+            df = apply_preprocess(df_raw, text_col="text_feedback")
             preprocessed_path = save_preprocessed(df, run_dir)
             run_mgr.register_artifact(run_id, "preprocessed_data", preprocessed_path, "data", stage)
             run_mgr.complete_stage(run_id, stage, started)
@@ -204,6 +207,8 @@ def run_full_pipeline(
         run_mgr.start_stage(run_id, stage)
         try:
             text_col = "text_processed" if "text_processed" in df_train.columns else "text_feedback"
+            source_text_col = "text_feedback" if "text_feedback" in df_train.columns else text_col
+            resolved_columns = resolve_roles(df=df_train, column_roles={}, overrides={})
             task_results = train_all_baselines(df_train, df_val, run_dir, seed=seed, text_col=text_col)
             if model_registry is not None:
                 for task_name, models_for_task in task_results.items():
@@ -220,6 +225,16 @@ def run_full_pipeline(
                                 dataset_version=dataset_version,
                                 config=cls_result.hyperparameters,
                                 run_id=run_id,
+                                input_signature=build_input_signature(
+                                    task=task_name,
+                                    resolved_columns=resolved_columns,
+                                    source_text_col=source_text_col,
+                                    model_input_col=text_col,
+                                    label_col=resolved_columns.label_col_by_task.get(task_name, task_name),
+                                    preprocess_spec=DEFAULT_PREPROCESS_SPEC,
+                                    classes=[str(value) for value in cls_result.classes],
+                                ),
+                                preprocess_spec=DEFAULT_PREPROCESS_SPEC.as_dict(),
                             )
                             registered_model_ids.append(model_meta.id)
                         except Exception:

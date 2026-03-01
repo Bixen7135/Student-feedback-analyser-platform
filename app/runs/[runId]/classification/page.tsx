@@ -42,7 +42,7 @@ export default function ClassificationPage({ params }: Props) {
   const taskMetrics = byTask[activeTask] ?? [];
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up space-y-6">
+    <div className="page-shell page-standard page-shell--md animate-fade-up space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-tertiary)" }}>
         <Link href="/runs" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Runs</Link>

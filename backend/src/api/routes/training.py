@@ -15,6 +15,8 @@ from src.training.config import TrainingConfig
 router = APIRouter(prefix="/api/training", tags=["training"])
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent.parent
+_REPO_ROOT = _BACKEND_DIR.parent
+_DEFAULT_DATA_PATH = _REPO_ROOT / "mnt/data/dataset.csv"
 
 
 def _get_artifacts_dir() -> Path:
@@ -25,6 +27,14 @@ def _get_artifacts_dir() -> Path:
     )
     base.mkdir(parents=True, exist_ok=True)
     return base
+
+
+def _resolve_data_path(override: str | None = None) -> Path:
+    """Return the dataset path: request override -> env var -> repo default."""
+    if override:
+        return Path(override)
+    env = os.environ.get("SFAP_DATA_PATH")
+    return Path(env) if env else _DEFAULT_DATA_PATH
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +58,8 @@ class TrainingConfigRequest(BaseModel):
 
 
 class StartTrainingRequest(BaseModel):
-    dataset_id: str
+    dataset_id: str | None = None
+    data_path: str | None = None
     task: str = Field(..., pattern="^(language|sentiment|detail_level)$")
     model_type: str = Field(..., pattern="^(tfidf|char_ngram)$")
     config: TrainingConfigRequest | None = None
@@ -104,20 +115,34 @@ async def start_training(
     Returns 202 Accepted immediately; poll GET /api/training/{job_id}/status
     to track progress.
     """
-    ds = dataset_manager.get_dataset(body.dataset_id)
-    if ds is None:
-        raise HTTPException(
-            status_code=404, detail=f"Dataset not found: {body.dataset_id}"
+    data_path: Path | None = None
+    dataset_ref: str
+    if body.dataset_id:
+        ds = dataset_manager.get_dataset(body.dataset_id)
+        if ds is None:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset not found: {body.dataset_id}"
+            )
+        dataset_ref = body.dataset_id
+        has_psychometrics = db.fetchone(
+            "SELECT id FROM pipeline_runs WHERE dataset_id = ? AND status = 'completed' LIMIT 1",
+            (body.dataset_id,),
         )
-
-    has_psychometrics = db.fetchone(
-        "SELECT id FROM pipeline_runs WHERE dataset_id = ? AND status = 'completed' LIMIT 1",
-        (body.dataset_id,),
-    )
-    psychometrics_warning = None if has_psychometrics else (
-        "No completed pipeline run found for this dataset. "
-        "Psychometrics has not been validated. See Scientific Spec."
-    )
+        psychometrics_warning = None if has_psychometrics else (
+            "No completed pipeline run found for this dataset. "
+            "Psychometrics has not been validated. See Scientific Spec."
+        )
+    else:
+        data_path = _resolve_data_path(body.data_path)
+        if not data_path.exists():
+            raise HTTPException(
+                status_code=404, detail=f"Training dataset not found: {data_path}"
+            )
+        dataset_ref = str(data_path)
+        psychometrics_warning = (
+            "Training is using a CSV file directly. "
+            "No dataset record or psychometrics history is linked."
+        )
 
     job_id = f"job_{uuid.uuid4().hex[:16]}"
 
@@ -138,11 +163,11 @@ async def start_training(
 
     job = training_runner.create_job(
         job_id=job_id,
-        dataset_id=body.dataset_id,
+        dataset_id=dataset_ref,
         task=body.task,
         model_type=body.model_type,
-        dataset_version=body.dataset_version,
-        branch_id=body.branch_id,
+        dataset_version=body.dataset_version if body.dataset_id else None,
+        branch_id=body.branch_id if body.dataset_id else None,
         seed=body.seed,
         name=body.name,
         base_model_id=body.base_model_id,
@@ -153,14 +178,15 @@ async def start_training(
         training_runner.run_job_background,
         job_id=job_id,
         dataset_id=body.dataset_id,
+        data_path=str(data_path) if data_path else None,
         task=body.task,
         model_type=body.model_type,
         dataset_manager=dataset_manager,
         model_registry=model_registry,
         artifacts_dir=_get_artifacts_dir(),
         config=config,
-        dataset_version=body.dataset_version,
-        branch_id=body.branch_id,
+        dataset_version=body.dataset_version if body.dataset_id else None,
+        branch_id=body.branch_id if body.dataset_id else None,
         seed=body.seed,
         name=body.name,
         base_model_id=body.base_model_id,

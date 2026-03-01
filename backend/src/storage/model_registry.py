@@ -46,6 +46,9 @@ class ModelRegistry:
         run_id: str | None = None,
         base_model_id: str | None = None,
         job_id: str | None = None,
+        input_signature: dict | None = None,
+        preprocess_spec: dict | None = None,
+        training_profile: dict | None = None,
     ) -> ModelMeta:
         """Register a trained model in the registry.
 
@@ -85,17 +88,35 @@ class ModelRegistry:
         if metrics is None and source_metrics_path and source_metrics_path.exists():
             metrics = orjson.loads(source_metrics_path.read_bytes())
         metrics = metrics or {}
+        input_signature = input_signature or {}
+        preprocess_spec = preprocess_spec or {}
+        training_profile = training_profile or {}
+
+        (version_dir / "signature.json").write_bytes(
+            orjson.dumps(
+                {
+                    "input_signature": input_signature,
+                    "preprocess_spec": preprocess_spec,
+                    "training_profile": training_profile,
+                },
+                option=orjson.OPT_INDENT_2,
+            )
+        )
 
         storage_path = str(version_dir)
 
         self.db.execute(
             """INSERT INTO models
             (id, name, task, model_type, version, dataset_id, dataset_version,
-             config, metrics, created_at, status, storage_path, run_id, base_model_id, job_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             config, metrics, created_at, status, storage_path, run_id, base_model_id, job_id,
+             input_signature, preprocess_spec, training_profile)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (model_id, name, task, model_type, version, dataset_id, dataset_version,
              orjson.dumps(config).decode(), orjson.dumps(metrics).decode(),
-             now, "active", storage_path, run_id, base_model_id, job_id),
+             now, "active", storage_path, run_id, base_model_id, job_id,
+             orjson.dumps(input_signature).decode(),
+             orjson.dumps(preprocess_spec).decode(),
+             orjson.dumps(training_profile).decode()),
         )
         self.db.commit()
 
@@ -114,6 +135,9 @@ class ModelRegistry:
             run_id=run_id,
             base_model_id=base_model_id,
             job_id=job_id,
+            input_signature=input_signature,
+            preprocess_spec=preprocess_spec,
+            training_profile=training_profile,
         )
         log.info("model_registered", id=model_id, task=task, model_type=model_type, version=version)
         return meta
@@ -302,6 +326,19 @@ class ModelRegistry:
     @staticmethod
     def _row_to_model(row: Any) -> ModelMeta:
         d = dict(row)
-        d["config"] = orjson.loads(d["config"]) if isinstance(d["config"], str) else d["config"]
-        d["metrics"] = orjson.loads(d["metrics"]) if isinstance(d["metrics"], str) else d["metrics"]
+        for field in (
+            "config",
+            "metrics",
+            "input_signature",
+            "preprocess_spec",
+            "training_profile",
+        ):
+            raw = d.get(field)
+            if isinstance(raw, str):
+                try:
+                    d[field] = orjson.loads(raw)
+                except Exception:
+                    d[field] = {}
+            elif raw is None:
+                d[field] = {}
         return ModelMeta(**d)

@@ -28,8 +28,22 @@ interface CellRef {
 }
 
 const MIN_COLUMN_WIDTH = 80;
+const MAX_AUTO_COLUMN_WIDTH = 176;
+const AUTO_COLUMN_CHAR_WIDTH = 7;
+const AUTO_COLUMN_BASE_PADDING = 34;
 const MIN_ROW_HEIGHT = 26;
 const MAX_ROW_HEIGHT = 240;
+
+function getAutoColumnWidth(label: string): number {
+  const normalized = label.trim() || "Column";
+  const estimatedWidth =
+    normalized.length * AUTO_COLUMN_CHAR_WIDTH + AUTO_COLUMN_BASE_PADDING;
+
+  return Math.max(
+    MIN_COLUMN_WIDTH,
+    Math.min(MAX_AUTO_COLUMN_WIDTH, estimatedWidth)
+  );
+}
 
 export function DataTable({
   storageKey,
@@ -504,11 +518,16 @@ export function DataTable({
   return (
     <div>
       {/* Toolbar: search column + find button */}
-      <div className="flex items-center gap-2" style={{ marginBottom: "10px", flexWrap: "wrap" }}>
-        <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginLeft: "auto" }}>
+      <div className="data-table__toolbar" style={{ marginBottom: "10px" }}>
+        <span
+          className="data-table__toolbar-count"
+          style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginLeft: "auto" }}
+        >
           {totalRows.toLocaleString()} rows
         </span>
         <button
+          type="button"
+          className="data-table__toolbar-find"
           onClick={() => { setShowFind((v) => !v); setTimeout(() => findInputRef.current?.focus(), 50); }}
           style={{
             background: showFind ? "var(--accent)" : "var(--bg-elevated)",
@@ -669,7 +688,8 @@ export function DataTable({
                 const displayName = pendingName !== undefined ? pendingName : col;
                 const hasPendingRename = pendingName !== undefined && pendingName !== col;
                 const isEditingThisHeader = editingHeader === colIdx;
-                const colWidth = columnWidths.get(colIdx);
+                const colWidth =
+                  columnWidths.get(colIdx) ?? getAutoColumnWidth(displayName);
 
                 return (
                   <th
@@ -680,12 +700,16 @@ export function DataTable({
                       background: hasPendingRename ? "rgba(251,146,60,0.08)" : "var(--bg-elevated)",
                       borderLeft: hasPendingRename ? "2px solid rgb(251,146,60)" : undefined,
                       position: "relative",
-                      width: colWidth ? `${colWidth}px` : undefined,
-                      minWidth: colWidth ? `${colWidth}px` : undefined,
-                      maxWidth: colWidth ? `${colWidth}px` : undefined,
+                      width: `${colWidth}px`,
+                      minWidth: `${colWidth}px`,
+                      maxWidth: `${colWidth}px`,
                     }}
                     onDoubleClick={() => startHeaderEdit(colIdx)}
-                    title={editable && onColumnRename ? "Double-click to rename column" : col}
+                    title={
+                      editable && onColumnRename
+                        ? `${displayName} - Double-click to rename column`
+                        : displayName
+                    }
                   >
                     {isEditingThisHeader ? (
                       <input
@@ -797,7 +821,11 @@ export function DataTable({
                       const isMatch = matchSet.has(cellKey);
                       const isCurrentMatch = currentMatchKey === cellKey;
                       const hasPending = pendingVal !== undefined && pendingVal !== cell;
-                      const colWidth = columnWidths.get(colIdx);
+                      const colWidth =
+                        columnWidths.get(colIdx) ??
+                        getAutoColumnWidth(
+                          pendingColumnRenames?.get(colIdx) ?? columns[colIdx] ?? ""
+                        );
 
                       return (
                         <td
@@ -815,9 +843,9 @@ export function DataTable({
                           style={{
                             padding: isEditing ? "2px 4px" : "6px 10px",
                             color: "var(--text-secondary)",
-                            width: colWidth ? `${colWidth}px` : undefined,
-                            minWidth: colWidth ? `${colWidth}px` : undefined,
-                            maxWidth: colWidth ? `${colWidth}px` : "300px",
+                            width: `${colWidth}px`,
+                            minWidth: `${colWidth}px`,
+                            maxWidth: `${colWidth}px`,
                             overflow: isEditing ? "visible" : "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: isEditing ? "normal" : "nowrap",
@@ -877,8 +905,8 @@ export function DataTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between" style={{ marginTop: "12px" }}>
-        <div className="flex items-center gap-2">
+      <div className="data-table__pagination" style={{ marginTop: "12px" }}>
+        <div className="data-table__pagination-controls">
           {/* First page */}
           <button
             onClick={() => onPageChange(0)}
@@ -939,6 +967,7 @@ export function DataTable({
         </div>
         {onLimitChange && (
           <select
+            className="data-table__pagination-limit"
             value={limit}
             onChange={(e) => onLimitChange(Number(e.target.value))}
             style={selectStyle}

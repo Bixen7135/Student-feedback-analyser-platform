@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field
 from src.api.dependencies import get_dataset_manager, get_model_registry, get_db
 from src.analysis import runner as analysis_runner
 from src.analysis.comparator import compare_analyses
+from src.inference.engine import check_compatibility
+from src.schema import DatasetSchemaSnapshot, normalize_column_name, resolve_roles
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 
@@ -129,21 +131,81 @@ async def start_analysis(
         "Psychometrics has not been validated. See Scientific Spec."
     )
 
-    # Validate all model IDs exist
+    try:
+        target_df = dataset_manager.get_dataframe(
+            dataset_id=body.dataset_id,
+            version=body.dataset_version,
+            branch_id=body.branch_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    if body.text_col:
+        normalized_text_col = normalize_column_name(body.text_col)
+        if normalized_text_col not in target_df.columns:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": f"Text column '{normalized_text_col}' not found in the target dataset.",
+                    "reasons": [
+                        {
+                            "code": "missing_column",
+                            "role": "text",
+                            "column": normalized_text_col,
+                            "suggested_fix": "Choose a valid text column from the dataset schema.",
+                        }
+                    ],
+                },
+            )
+    compatibility_roles = (
+        {normalize_column_name(body.text_col): "text"}
+        if body.text_col
+        else {}
+    )
+    resolved_columns = resolve_roles(
+        df=target_df,
+        column_roles=compatibility_roles,
+        overrides={"text_col": body.text_col} if body.text_col else {},
+    )
+    dataset_schema = DatasetSchemaSnapshot(
+        columns=tuple(str(col) for col in target_df.columns),
+        normalized_columns=tuple(normalize_column_name(col) for col in target_df.columns),
+        column_roles=compatibility_roles,
+    )
+
+    incompatible_models: list[dict] = []
     for model_id in body.model_ids:
         m = model_registry.get_model(model_id)
         if m is None:
             raise HTTPException(
                 status_code=404, detail=f"Model not found: {model_id}"
             )
-        if m.dataset_id is not None and m.dataset_id != body.dataset_id:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Model {model_id} is trained on dataset {m.dataset_id} "
-                    f"and is incompatible with dataset {body.dataset_id}."
-                ),
+        report = check_compatibility(
+            model_meta=m,
+            dataset_schema=dataset_schema,
+            resolved_columns=resolved_columns,
+        )
+        if not report["ok"]:
+            incompatible_models.append(
+                {
+                    "model_id": model_id,
+                    "model_name": m.name,
+                    "compatibility": report,
+                }
             )
+
+    if incompatible_models:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "One or more models are incompatible with the target dataset.",
+                "suggested_fix": (
+                    "Assign the required column roles, choose a valid text column, "
+                    "or select a dataset version whose schema matches the model input contract."
+                ),
+                "models": incompatible_models,
+            },
+        )
 
     job_id = f"analysis_{uuid.uuid4().hex[:16]}"
 

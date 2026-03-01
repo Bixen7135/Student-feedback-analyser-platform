@@ -1,0 +1,45 @@
+{
+  "input_signature": {
+    "task": "sentiment",
+    "required_roles": [
+      "text"
+    ],
+    "text": {
+      "role": "text",
+      "source_column": "text_feedback",
+      "model_input_column": "text_processed"
+    },
+    "label_schema": {
+      "role": "sentiment",
+      "column": "sentiment_class",
+      "class_order": [
+        "negative",
+        "neutral",
+        "positive"
+      ]
+    },
+    "resolved_columns": {
+      "text_col": "text_processed",
+      "label_col_by_task": {
+        "language": "language",
+        "sentiment": "sentiment_class",
+        "detail_level": "detail_level"
+      },
+      "language_col": "language",
+      "detail_col": "detail_level"
+    },
+    "preprocess_spec_id": "preprocess_v1",
+    "training_config": {}
+  },
+  "preprocess_spec": {
+    "id": "preprocess_v1",
+    "params": {
+      "normalize_unicode": true,
+      "normalize_punctuation": true,
+      "redact_pii": true,
+      "text_features": true,
+      "output_text_col": "text_processed"
+    }
+  },
+  "training_profile": {}
+}

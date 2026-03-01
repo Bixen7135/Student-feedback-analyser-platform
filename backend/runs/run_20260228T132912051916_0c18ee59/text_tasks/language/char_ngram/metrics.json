@@ -1,0 +1,63 @@
+{
+  "task": "language",
+  "model_type": "char_ngram",
+  "seed": 50,
+  "hyperparameters": {
+    "model_type": "char_ngram_logreg",
+    "analyzer": "char_wb",
+    "ngram_range": [
+      2,
+      5
+    ],
+    "max_features": 100000,
+    "sublinear_tf": true,
+    "C": 1.0,
+    "max_iter": 1000,
+    "class_weight": "balanced"
+  },
+  "classes": [
+    "kz",
+    "mixed",
+    "ru"
+  ],
+  "train": {
+    "macro_f1": 0.9957934363743731,
+    "accuracy": 0.9974289580514208,
+    "per_class_f1": {
+      "kz": 0.996768301250527,
+      "mixed": 0.9914452949122017,
+      "ru": 0.9991667129603911
+    }
+  },
+  "val": {
+    "macro_f1": 0.9905127024453725,
+    "accuracy": 0.9940476190476191,
+    "per_class_f1": {
+      "kz": 0.989010989010989,
+      "mixed": 0.9834437086092715,
+      "ru": 0.999083409715857
+    },
+    "confusion_matrix": [
+      [
+        450,
+        4,
+        0
+      ],
+      [
+        5,
+        297,
+        1
+      ],
+      [
+        1,
+        0,
+        1090
+      ]
+    ]
+  },
+  "predicted_class_distribution": {
+    "kz": 0.24675324675324675,
+    "mixed": 0.16287878787878787,
+    "ru": 0.5903679653679653
+  }
+}

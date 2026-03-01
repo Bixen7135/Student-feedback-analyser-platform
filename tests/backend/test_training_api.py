@@ -51,6 +51,9 @@ def api_client(tmp_path_factory):
     os.environ["SFAP_DATASETS_DIR"] = str(tmp / "datasets")
     os.environ["SFAP_MODELS_DIR"] = str(tmp / "models")
     os.environ["SFAP_TRAINING_DIR"] = str(tmp / "training_runs")
+    default_csv_path = tmp / "default_dataset.csv"
+    _make_labelled_csv(default_csv_path)
+    os.environ["SFAP_DATA_PATH"] = str(default_csv_path)
 
     # Clear LRU caches so the new env vars take effect
     dependencies.get_run_manager.cache_clear()
@@ -79,7 +82,7 @@ def api_client(tmp_path_factory):
 
     # Cleanup env vars
     for key in [
-        "SFAP_DB_PATH", "SFAP_DATASETS_DIR", "SFAP_MODELS_DIR", "SFAP_TRAINING_DIR"
+        "SFAP_DB_PATH", "SFAP_DATASETS_DIR", "SFAP_MODELS_DIR", "SFAP_TRAINING_DIR", "SFAP_DATA_PATH"
     ]:
         os.environ.pop(key, None)
 
@@ -119,6 +122,20 @@ class TestStartTraining:
             },
         )
         assert resp.status_code == 404
+
+    def test_start_without_dataset_uses_default_csv(self, api_client):
+        resp = api_client.post(
+            "/api/training/start",
+            json={
+                "task": "sentiment",
+                "model_type": "tfidf",
+                "seed": 42,
+            },
+        )
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["dataset_id"].endswith("default_dataset.csv")
+        assert body["psychometrics_warning"] is not None
 
     def test_start_rejects_invalid_task(self, api_client):
         resp = api_client.post(

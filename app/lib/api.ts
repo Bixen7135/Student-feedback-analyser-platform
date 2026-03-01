@@ -3,7 +3,110 @@
  * All calls use relative /api/* paths which Next.js proxies to localhost:8000.
  */
 
+import {
+  buildFilterSearchParams,
+  type FilterRule,
+} from "@/app/lib/filters";
+
+export type { FilterRule } from "@/app/lib/filters";
+
 const API_BASE = "/api";
+
+function formatApiErrorMessage(
+  status: number,
+  rawBody: string,
+  statusText: string
+): string {
+  const payload = parseApiPayload(rawBody);
+  const detail = extractApiErrorDetail(payload);
+  return `API ${status}: ${detail || rawBody || statusText}`;
+}
+
+function parseApiPayload(rawBody: string): unknown {
+  if (!rawBody) return null;
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+}
+
+function extractApiErrorDetail(payload: unknown): string | null {
+  if (!payload) return null;
+  if (typeof payload === "string") return payload;
+  if (Array.isArray(payload)) {
+    const parts = payload
+      .map((item) => extractApiErrorDetail(item))
+      .filter((item): item is string => Boolean(item));
+    return parts.length > 0 ? parts.join("; ") : null;
+  }
+  if (typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+  if ("detail" in record) {
+    const detailText = extractApiErrorDetail(record.detail);
+    if (detailText) return detailText;
+  }
+
+  const message =
+    typeof record.message === "string" && record.message.trim()
+      ? record.message.trim()
+      : typeof record.msg === "string" && record.msg.trim()
+      ? record.msg.trim()
+      : null;
+
+  const reasonText = Array.isArray(record.reasons)
+    ? record.reasons
+        .map((reason) => {
+          if (!reason || typeof reason !== "object") return null;
+          const data = reason as Record<string, unknown>;
+          const base =
+            typeof data.message === "string" && data.message.trim()
+              ? data.message.trim()
+              : typeof data.code === "string" && data.code.trim()
+              ? data.code.trim()
+              : null;
+          const fix =
+            typeof data.suggested_fix === "string" && data.suggested_fix.trim()
+              ? ` Fix: ${data.suggested_fix.trim()}`
+              : "";
+          return base ? `${base}${fix}` : null;
+        })
+        .filter((item): item is string => Boolean(item))
+        .join("; ")
+    : "";
+
+  const modelText = Array.isArray(record.models)
+    ? record.models
+        .map((model) => {
+          if (!model || typeof model !== "object") return null;
+          const data = model as Record<string, unknown>;
+          const modelName =
+            typeof data.model_name === "string" && data.model_name.trim()
+              ? data.model_name.trim()
+              : typeof data.model_id === "string" && data.model_id.trim()
+              ? data.model_id.trim()
+              : "model";
+          const modelDetail =
+            extractApiErrorDetail(data.compatibility) ||
+            extractApiErrorDetail(data.error);
+          return modelDetail ? `${modelName}: ${modelDetail}` : null;
+        })
+        .filter((item): item is string => Boolean(item))
+        .join("; ")
+    : "";
+
+  const suggestedFix =
+    typeof record.suggested_fix === "string" && record.suggested_fix.trim()
+      ? ` Fix: ${record.suggested_fix.trim()}`
+      : "";
+
+  const parts = [message, reasonText, modelText].filter(
+    (item): item is string => Boolean(item)
+  );
+  if (parts.length === 0) return null;
+  return `${parts.join("; ")}${suggestedFix}`;
+}
 
 export interface StageStatus {
   name: string;
@@ -115,10 +218,31 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${text || res.statusText}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(formatApiErrorMessage(res.status, body, res.statusText));
   }
   return res.json() as Promise<T>;
+}
+
+function appendFilterStateParams(
+  sp: URLSearchParams,
+  params?: {
+    sort_col?: string;
+    sort_order?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): URLSearchParams {
+  const next = buildFilterSearchParams(
+    {
+      filters: params?.filters,
+      search: params?.search,
+      sortCol: params?.sort_col ?? "",
+      sortOrder: params?.sort_order === "desc" ? "desc" : "asc",
+    },
+    sp,
+  );
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +483,7 @@ export async function fetchColumnRoles(
   if (params?.version_id) sp.set("version_id", params.version_id);
   if (params?.version != null) sp.set("version", String(params.version));
   const qs = sp.toString();
-  return apiFetch(`/datasets/${datasetId}/column-roles${qs}`);
+  return apiFetch(`/datasets/${datasetId}/column-roles${qs ? `?${qs}` : ""}`);
 }
 
 export async function uploadDataset(
@@ -636,7 +760,31 @@ export interface ModelSummary {
   storage_path: string;
   run_id: string | null;
   base_model_id: string | null;
+  input_signature: Record<string, unknown>;
+  preprocess_spec: Record<string, unknown>;
+  training_profile: Record<string, unknown>;
   run_source: ModelRunSource;
+}
+
+export interface CompatibilityReason {
+  code?: string;
+  role?: string;
+  column?: string;
+  message?: string;
+  suggested_fix?: string;
+  [key: string]: unknown;
+}
+
+export interface ModelCompatibility {
+  ok: boolean;
+  reasons: CompatibilityReason[];
+  resolved_columns: Record<string, unknown>;
+  required_roles: string[];
+  preprocess_spec_id: string | null;
+  label_schema: Record<string, unknown>;
+  schema_columns: string[];
+  text_col_used: string | null;
+  label_col_used: string | null;
 }
 
 export interface ModelLineageResponse {
@@ -715,6 +863,26 @@ export async function fetchModelLineage(modelId: string): Promise<ModelLineageRe
   return apiFetch<ModelLineageResponse>(`/models/${modelId}/lineage`);
 }
 
+export async function fetchModelCompatibility(
+  modelId: string,
+  params: {
+    dataset_id: string;
+    dataset_version?: number | null;
+    branch_id?: string | null;
+  }
+): Promise<ModelCompatibility> {
+  const sp = new URLSearchParams({ dataset_id: params.dataset_id });
+  if (params.dataset_version != null) {
+    sp.set("dataset_version", String(params.dataset_version));
+  }
+  if (params.branch_id) {
+    sp.set("branch_id", params.branch_id);
+  }
+  return apiFetch<ModelCompatibility>(
+    `/models/${modelId}/compatibility?${sp.toString()}`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Training types
 // ---------------------------------------------------------------------------
@@ -732,7 +900,8 @@ export interface TrainingConfigRequest {
 }
 
 export interface StartTrainingRequest {
-  dataset_id: string;
+  dataset_id?: string | null;
+  data_path?: string;
   task: "language" | "sentiment" | "detail_level";
   model_type: "tfidf" | "char_ngram";
   config?: TrainingConfigRequest;
@@ -814,12 +983,17 @@ export interface ModelApplied {
   n_predicted: number;
   class_distribution: Record<string, number>;
   classes: string[];
+  compatibility?: ModelCompatibility;
+  preprocess_spec_applied?: string | null;
+  text_col_used?: string | null;
+  model_input_col?: string | null;
 }
 
 export interface AnalysisSummary {
   analysis_id: string;
   dataset_id: string;
   dataset_version: number | null;
+  branch_id?: string | null;
   n_rows: number;
   n_rows_processed: number;
   text_col: string | null;
@@ -1012,16 +1186,12 @@ export async function fetchAnalysisResults(
     search?: string;
   }
 ): Promise<AnalysisResults> {
-  const sp = new URLSearchParams();
+  let sp = new URLSearchParams();
   if (params?.offset != null) sp.set("offset", String(params.offset));
   if (params?.limit != null) sp.set("limit", String(params.limit));
-  if (params?.sort_col) sp.set("sort_col", params.sort_col);
-  if (params?.sort_order) sp.set("sort_order", params.sort_order);
   if (params?.filter_col) sp.set("filter_col", params.filter_col);
   if (params?.filter_val) sp.set("filter_val", params.filter_val);
-  if (params?.filters && params.filters.length > 0)
-    sp.set("filters", JSON.stringify(params.filters));
-  if (params?.search) sp.set("search", params.search);
+  sp = appendFilterStateParams(sp, params);
   const qs = sp.toString();
   return apiFetch<AnalysisResults>(`/analyses/${analysisId}/results${qs ? `?${qs}` : ""}`);
 }
@@ -1039,11 +1209,13 @@ export function getFilteredExportUrl(
   sortCol?: string,
   sortOrder?: string
 ): string {
-  const sp = new URLSearchParams({ format });
-  if (filters && filters.length > 0) sp.set("filters", JSON.stringify(filters));
-  if (search) sp.set("search", search);
-  if (sortCol) sp.set("sort_col", sortCol);
-  if (sortOrder) sp.set("sort_order", sortOrder);
+  let sp = new URLSearchParams({ format });
+  sp = appendFilterStateParams(sp, {
+    filters,
+    search,
+    sort_col: sortCol,
+    sort_order: sortOrder,
+  });
   return `/api/analyses/${analysisId}/results/export?${sp.toString()}`;
 }
 
@@ -1069,13 +1241,6 @@ export async function fetchAnalysisAnomalies(
   if (confThreshold != null) sp.set("conf_threshold", String(confThreshold));
   const qs = sp.toString();
   return apiFetch<AnomalyResponse>(`/analyses/${analysisId}/anomalies${qs ? `?${qs}` : ""}`);
-}
-
-// Phase 5: filter rule type
-export interface FilterRule {
-  col: string;
-  op: "eq" | "ne" | "contains" | "gt" | "lt" | "gte" | "lte";
-  val: string;
 }
 
 // Phase 5: saved filters
@@ -1130,6 +1295,163 @@ export async function deleteSavedFilter(filterId: string): Promise<{ deleted: bo
 // Phase 3: Analytics & Visualization types + fetch functions
 // ---------------------------------------------------------------------------
 
+export interface AnalyticsSummary {
+  n_rows: number;
+  numeric: Record<string, Record<string, unknown>>;
+  categorical: Record<
+    string,
+    {
+      count: number;
+      missing: number;
+      n_unique: number;
+      top: string | null;
+      levels: Record<
+        string,
+        {
+          count: number;
+          proportion: number;
+          confidence_interval: Record<string, unknown>;
+        }
+      >;
+    }
+  >;
+  text: Record<
+    string,
+    {
+      count: number;
+      missing: number;
+      char_length: Record<string, unknown>;
+      word_length: Record<string, unknown>;
+    }
+  >;
+}
+
+export interface DatasetDescriptiveAnalytics {
+  dataset_id: string;
+  dataset_version: number | null;
+  branch_id: string | null;
+  row_count: number;
+  summary: AnalyticsSummary;
+}
+
+export interface DatasetCorrelationsResponse {
+  dataset_id: string;
+  dataset_version: number | null;
+  branch_id: string | null;
+  row_count: number;
+  correlations: CorrelationResult[];
+}
+
+export interface AnalysisDescriptiveAnalytics {
+  analysis_id: string;
+  row_count: number;
+  summary: AnalyticsSummary;
+}
+
+export interface CorrelationResult {
+  left: string;
+  right: string;
+  metric: string;
+  value: number;
+  n: number;
+}
+
+export interface AnalysisCorrelationsResponse {
+  analysis_id: string;
+  row_count: number;
+  correlations: CorrelationResult[];
+}
+
+export interface ClassificationDiagnostics {
+  n_rows: number;
+  labels: string[];
+  accuracy: number;
+  macro_f1: number;
+  confusion_matrix: number[][];
+  per_class: Record<string, { support: number; precision: number; recall: number; f1: number }>;
+  calibration: Array<{
+    range: [number, number];
+    count: number;
+    avg_confidence: number;
+    accuracy: number;
+  }>;
+  ece: number;
+}
+
+export interface AnalysisDiagnosticsResponse {
+  analysis_id: string;
+  task: string;
+  label_col: string;
+  pred_col: string;
+  conf_col: string | null;
+  diagnostics: ClassificationDiagnostics;
+}
+
+export interface EmbeddingPoint {
+  row_idx: number | string;
+  x: number | string;
+  y: number | string;
+  [key: string]: string | number;
+}
+
+export interface AnalysisEmbeddingsResponse {
+  analysis_id: string;
+  text_col: string;
+  artifact_path: string;
+  count: number;
+  columns: string[];
+  metadata: Record<string, unknown>;
+  points: EmbeddingPoint[];
+}
+
+export interface ClusteredPoint extends EmbeddingPoint {
+  cluster: number | string;
+}
+
+export interface AnalysisClusterResponse {
+  analysis_id: string;
+  artifact_path: string;
+  metadata: Record<string, unknown>;
+  clusters: ClusteredPoint[];
+  cluster_counts: Record<string, number>;
+}
+
+export interface OutlierPoint extends EmbeddingPoint {
+  is_outlier: boolean | string;
+  outlier_score: number | string;
+}
+
+export interface AnalysisOutliersResponse {
+  analysis_id: string;
+  artifact_path: string;
+  metadata: Record<string, unknown>;
+  outlier_count: number;
+  rows: OutlierPoint[];
+}
+
+export interface ModelImportanceResponse {
+  model_id: string;
+  task: string;
+  model_type: string;
+  classes: string[];
+  top_n: number;
+  per_class: Record<string, Array<{ feature: string; weight: number }>>;
+}
+
+export interface ModelExplanationResponse {
+  model_id: string;
+  predicted_class: string;
+  probabilities: Record<string, number>;
+  processed_text: string;
+  top_features: Array<{
+    feature: string;
+    value: number;
+    weight: number;
+    contribution: number;
+  }>;
+  source: Record<string, unknown>;
+}
+
 export interface DistributionData {
   distributions: Record<string, Record<string, number>>;
 }
@@ -1179,5 +1501,192 @@ export async function fetchCrossCompare(
   return apiFetch<CrossCompareData>("/analyses/cross-compare", {
     method: "POST",
     body: JSON.stringify({ analysis_ids: analysisIds, columns }),
+  });
+}
+
+export async function fetchDatasetDescriptiveAnalytics(
+  datasetId: string,
+  params?: {
+    dataset_version?: number | null;
+    branch_id?: string | null;
+    filter_col?: string;
+    filter_val?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): Promise<DatasetDescriptiveAnalytics> {
+  let sp = new URLSearchParams();
+  if (params?.dataset_version != null) sp.set("dataset_version", String(params.dataset_version));
+  if (params?.branch_id) sp.set("branch_id", params.branch_id);
+  if (params?.filter_col) sp.set("filter_col", params.filter_col);
+  if (params?.filter_val) sp.set("filter_val", params.filter_val);
+  sp = appendFilterStateParams(sp, params);
+  const qs = sp.toString();
+  return apiFetch<DatasetDescriptiveAnalytics>(
+    `/analytics/datasets/${datasetId}/descriptive${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function fetchDatasetCorrelations(
+  datasetId: string,
+  params?: {
+    dataset_version?: number | null;
+    branch_id?: string | null;
+    columns?: string[];
+    filter_col?: string;
+    filter_val?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): Promise<DatasetCorrelationsResponse> {
+  let sp = new URLSearchParams();
+  if (params?.dataset_version != null) sp.set("dataset_version", String(params.dataset_version));
+  if (params?.branch_id) sp.set("branch_id", params.branch_id);
+  if (params?.columns?.length) sp.set("columns", params.columns.join(","));
+  if (params?.filter_col) sp.set("filter_col", params.filter_col);
+  if (params?.filter_val) sp.set("filter_val", params.filter_val);
+  sp = appendFilterStateParams(sp, params);
+  const qs = sp.toString();
+  return apiFetch<DatasetCorrelationsResponse>(
+    `/analytics/datasets/${datasetId}/correlations${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function fetchAnalysisDescriptiveAnalytics(
+  analysisId: string,
+  params?: {
+    filter_col?: string;
+    filter_val?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): Promise<AnalysisDescriptiveAnalytics> {
+  let sp = new URLSearchParams();
+  if (params?.filter_col) sp.set("filter_col", params.filter_col);
+  if (params?.filter_val) sp.set("filter_val", params.filter_val);
+  sp = appendFilterStateParams(sp, params);
+  const qs = sp.toString();
+  return apiFetch<AnalysisDescriptiveAnalytics>(
+    `/analytics/analyses/${analysisId}/descriptive${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function fetchAnalysisCorrelations(
+  analysisId: string,
+  params?: {
+    columns?: string[];
+    filter_col?: string;
+    filter_val?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): Promise<AnalysisCorrelationsResponse> {
+  let sp = new URLSearchParams();
+  if (params?.columns?.length) sp.set("columns", params.columns.join(","));
+  if (params?.filter_col) sp.set("filter_col", params.filter_col);
+  if (params?.filter_val) sp.set("filter_val", params.filter_val);
+  sp = appendFilterStateParams(sp, params);
+  const qs = sp.toString();
+  return apiFetch<AnalysisCorrelationsResponse>(
+    `/analytics/analyses/${analysisId}/correlations${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function fetchAnalysisDiagnostics(
+  analysisId: string,
+  params: {
+    task: string;
+    filter_col?: string;
+    filter_val?: string;
+    filters?: FilterRule[];
+    search?: string;
+  },
+): Promise<AnalysisDiagnosticsResponse> {
+  let sp = new URLSearchParams({ task: params.task });
+  if (params.filter_col) sp.set("filter_col", params.filter_col);
+  if (params.filter_val) sp.set("filter_val", params.filter_val);
+  sp = appendFilterStateParams(sp, params);
+  return apiFetch<AnalysisDiagnosticsResponse>(
+    `/analytics/analyses/${analysisId}/diagnostics?${sp.toString()}`,
+  );
+}
+
+export async function fetchAnalysisEmbeddings(
+  analysisId: string,
+  body?: {
+    model_id?: string | null;
+    reuse_cached?: boolean;
+    max_features?: number;
+  },
+): Promise<AnalysisEmbeddingsResponse> {
+  return apiFetch<AnalysisEmbeddingsResponse>(
+    `/analytics/analyses/${analysisId}/embeddings`,
+    {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+export async function fetchAnalysisCluster(
+  analysisId: string,
+  body?: {
+    method?: string;
+    k?: number;
+    eps?: number;
+    min_samples?: number;
+    model_id?: string | null;
+    reuse_embeddings?: boolean;
+  },
+): Promise<AnalysisClusterResponse> {
+  return apiFetch<AnalysisClusterResponse>(
+    `/analytics/analyses/${analysisId}/cluster`,
+    {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+export async function fetchAnalysisOutliersAnalytics(
+  analysisId: string,
+  body?: {
+    method?: string;
+    contamination?: number;
+    n_neighbors?: number;
+    model_id?: string | null;
+    reuse_embeddings?: boolean;
+  },
+): Promise<AnalysisOutliersResponse> {
+  return apiFetch<AnalysisOutliersResponse>(
+    `/analytics/analyses/${analysisId}/outliers`,
+    {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+}
+
+export async function fetchModelImportance(
+  modelId: string,
+  topN = 20,
+): Promise<ModelImportanceResponse> {
+  return apiFetch<ModelImportanceResponse>(
+    `/models/${modelId}/importance?top_n=${topN}`,
+  );
+}
+
+export async function explainModel(
+  modelId: string,
+  body: {
+    text?: string;
+    analysis_id?: string;
+    row_idx?: number;
+    top_n?: number;
+  },
+): Promise<ModelExplanationResponse> {
+  return apiFetch<ModelExplanationResponse>(`/models/${modelId}/explain`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }

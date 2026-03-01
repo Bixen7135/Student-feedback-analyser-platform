@@ -46,6 +46,8 @@ const STEP_LABELS = [
   "Review & Launch",
 ];
 
+const DEFAULT_TRAINING_DATASET_PATH = "/mnt/data/dataset.csv";
+
 // All known system field names that a column can be mapped to.
 const SYSTEM_ROLES: { value: string; label: string }[] = [
   { value: "", label: "(not used)" },
@@ -241,14 +243,14 @@ export default function TrainingPage() {
   const testRatio = Math.max(0.02, parseFloat((1 - trainRatio - valRatio).toFixed(3)));
 
   async function handleLaunch() {
-    if (!selectedDataset) return;
     setLaunching(true);
     setLaunchError(null);
     try {
       const req: StartTrainingRequest = {
-        dataset_id: selectedDataset.id,
-        dataset_version: selectedVersion,
-        branch_id: selectedBranch,
+        dataset_id: selectedDataset?.id ?? null,
+        data_path: selectedDataset ? undefined : DEFAULT_TRAINING_DATASET_PATH,
+        dataset_version: selectedDataset ? selectedVersion : null,
+        branch_id: selectedDataset ? selectedBranch : null,
         task: selectedTask,
         model_type: selectedModel,
         seed,
@@ -340,28 +342,56 @@ export default function TrainingPage() {
   } as const;
 
   return (
-    <div style={{ padding: "32px", maxWidth: "720px" }} className="animate-fade-up">
-      {/* Header */}
-      <div style={{ marginBottom: "28px" }}>
-        <h1
+    <div
+      className={`page-shell page-standard ${step === 0 ? "page-shell--xs" : "page-shell--sm"} animate-fade-up`}
+    >
+      {/* Back link */}
+      <div style={{ marginBottom: "6px" }}>
+        <button
+          type="button"
+          onClick={() => router.back()}
           style={{
-            fontFamily: "var(--font-syne)",
-            fontSize: "20px",
-            fontWeight: 700,
-            color: "var(--text-primary)",
-            marginBottom: "6px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--text-tertiary)",
+            background: "none",
+            border: "none",
+            padding: 0,
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+            cursor: "pointer",
           }}
         >
-          Train a Classifier
-        </h1>
-        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-          Train a text classifier on an uploaded dataset and register it in the
-          model registry.
-        </p>
+          <span aria-hidden="true">&larr;</span>
+          <span>Back</span>
+        </button>
+      </div>
+
+      {/* Header */}
+      <div style={{ marginBottom: "28px" }}>
+        <div style={{ minWidth: 0 }}>
+          <h1
+            style={{
+              fontFamily: "var(--font-syne)",
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              marginBottom: "6px",
+            }}
+          >
+            Train a Classifier
+          </h1>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Train a text classifier on an uploaded dataset and register it in the
+            model registry.
+          </p>
+        </div>
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-0" style={{ marginBottom: "28px" }}>
+      <div className="flex flex-wrap items-center gap-y-3" style={{ marginBottom: "28px" }}>
         {STEP_LABELS.map((stepLabel, i) => (
           <div key={i} className="flex items-center">
             <div
@@ -577,7 +607,10 @@ export default function TrainingPage() {
                 textAlign: "center",
               }}
             >
-              Select a dataset to continue to task configuration.
+              No dataset selected — the pipeline will use the default{" "}
+              <span style={{ color: "var(--text-secondary)" }}>
+                /mnt/data/dataset.csv
+              </span>
             </div>
           )}
 
@@ -585,7 +618,7 @@ export default function TrainingPage() {
             <button
               className="w-full rounded-lg flex items-center justify-center gap-2 transition-all duration-150"
               style={{
-                background: !selectedDataset ? "var(--gold-muted)" : "var(--gold)",
+                background: "var(--gold)",
                 color: "#08080B",
                 padding: "11px 24px",
                 fontSize: "13px",
@@ -593,10 +626,8 @@ export default function TrainingPage() {
                 fontFamily: "var(--font-syne)",
                 letterSpacing: "0.05em",
                 border: "none",
-                cursor: !selectedDataset ? "not-allowed" : "pointer",
-                opacity: !selectedDataset ? 0.7 : 1,
+                cursor: "pointer",
               }}
-              disabled={!selectedDataset}
               onClick={() => setStep(1)}
             >
               Next
@@ -734,8 +765,8 @@ export default function TrainingPage() {
             />
           </div>
 
-          <div className="flex gap-4" style={{ marginBottom: "16px" }}>
-            <div style={{ flex: 1 }}>
+          <div className="flex gap-4" style={{ marginBottom: "16px", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
               <span style={label}>Train ratio</span>
               <input
                 type="number"
@@ -747,7 +778,7 @@ export default function TrainingPage() {
                 onChange={(e) => setTrainRatio(parseFloat(e.target.value))}
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
               <span style={label}>Val ratio</span>
               <input
                 type="number"
@@ -759,7 +790,7 @@ export default function TrainingPage() {
                 onChange={(e) => setValRatio(parseFloat(e.target.value))}
               />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
               <span style={label}>Test ratio</span>
               <div
                 style={{
@@ -913,11 +944,13 @@ export default function TrainingPage() {
                     background: "var(--bg-base)",
                     padding: "7px 12px",
                     borderBottom: "1px solid var(--border)",
+                    flexWrap: "wrap",
+                    gap: "4px 12px",
                   }}
                 >
                   <span
                     style={{
-                      flex: 1,
+                      flex: "1 1 12rem",
                       fontSize: "10px",
                       color: "var(--text-tertiary)",
                       fontFamily: "var(--font-syne)",
@@ -930,7 +963,7 @@ export default function TrainingPage() {
                   </span>
                   <span
                     style={{
-                      flex: 1,
+                      flex: "1 1 12rem",
                       fontSize: "10px",
                       color: "var(--text-tertiary)",
                       fontFamily: "var(--font-syne)",
@@ -958,11 +991,13 @@ export default function TrainingPage() {
                         columnRoles[col] === TASK_LABEL_COLS[selectedTask]
                           ? "var(--gold-faint)"
                           : "transparent",
+                      flexWrap: "wrap",
+                      gap: "8px 12px",
                     }}
                   >
                     <span
                       style={{
-                        flex: 1,
+                        flex: "1 1 12rem",
                         fontSize: "12px",
                         color: "var(--text-primary)",
                         fontFamily: "var(--font-jetbrains)",
@@ -972,7 +1007,7 @@ export default function TrainingPage() {
                     >
                       {col}
                     </span>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
                       <select
                         value={columnRoles[col] ?? ""}
                         onChange={(e) =>
@@ -1070,12 +1105,34 @@ export default function TrainingPage() {
             </div>
 
             {[
-              ["Dataset", selectedDataset?.name ?? "—"],
-              ["Branch", (() => {
-                const branch = dsBranches.find(b => b.id === selectedBranch);
-                return branch ? branch.name : (dsBranches.find(b => b.is_default)?.name || "default");
-              })()],
-              ["Version", selectedVersion ? `v${selectedVersion}` : "(latest on branch)"],
+              [
+                "Dataset",
+                selectedDataset?.name ?? "default",
+              ],
+              ...(!selectedDataset
+                ? [["Source file", DEFAULT_TRAINING_DATASET_PATH]]
+                : []),
+              [
+                "Branch",
+                selectedDataset
+                  ? (() => {
+                      const branch = dsBranches.find((b) => b.id === selectedBranch);
+                      return (
+                        branch?.name ??
+                        dsBranches.find((b) => b.is_default)?.name ??
+                        "default"
+                      );
+                    })()
+                  : "(not applicable)",
+              ],
+              [
+                "Version",
+                selectedDataset
+                  ? selectedVersion
+                    ? `v${selectedVersion}`
+                    : "(latest on branch)"
+                  : "(not applicable)",
+              ],
               ["Task", TASK_LABELS[selectedTask]],
               ["Model type", MODEL_LABELS[selectedModel]],
               ["Name", trainName || "(auto-generated)"],
@@ -1177,4 +1234,5 @@ export default function TrainingPage() {
     </div>
   );
 }
+
 

@@ -60,7 +60,7 @@ export default function ContradictionPage({ params }: Props) {
   }, [runId]);
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up space-y-6">
+    <div className="page-shell page-standard page-shell--md animate-fade-up space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-tertiary)" }}>
         <Link href="/runs" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Runs</Link>
@@ -96,7 +96,7 @@ export default function ContradictionPage({ params }: Props) {
           </div>
 
           {/* Big stats */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <BigStat value={`${(data.overall_rate * 100).toFixed(2)}%`} label="Overall Rate" />
             <BigStat value={data.n_contradictions.toLocaleString()} label="Total Flagged" />
             <BigStat value={data.n_total.toLocaleString()} label="Total Records" />
@@ -105,7 +105,8 @@ export default function ContradictionPage({ params }: Props) {
           {/* By type */}
           <Card>
             <SectionLabel>By Contradiction Type</SectionLabel>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="table-scroll">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <th style={{ textAlign: "left", padding: "6px 0", borderBottom: "1px solid var(--border)", fontFamily: "var(--font-syne)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" as const, color: "var(--text-tertiary)" }}>Type</th>
@@ -124,7 +125,8 @@ export default function ContradictionPage({ params }: Props) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
 
           {/* Stratified */}

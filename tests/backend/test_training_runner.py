@@ -249,6 +249,12 @@ class TestRunTraining:
         assert model is not None
         assert model.task == "sentiment"
         assert model.dataset_id == uploaded_dataset
+        assert model.input_signature["text"]["source_column"] == "text_feedback"
+        assert model.input_signature["text"]["model_input_column"] == "text_model_input"
+        assert model.preprocess_spec["id"] == "preprocess_v1"
+        assert model.training_profile["vocabulary_size"] > 0
+        assert result["metrics"]["text_col"] == "text_model_input"
+        assert result["metrics"]["preprocess_spec_id"] == "preprocess_v1"
 
     def test_trains_language_char_ngram(self, uploaded_dataset, tmp_dirs):
         dm, reg, arts = tmp_dirs

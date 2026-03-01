@@ -75,7 +75,29 @@ export default function UploadDatasetPage() {
   } as const;
 
   return (
-    <div style={{ padding: "32px", maxWidth: "640px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--xs animate-fade-up">
+      <div style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          onClick={() => router.push("/datasets")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "var(--text-tertiary)",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+            cursor: "pointer",
+          }}
+        >
+          <span aria-hidden="true">&larr;</span>
+          <span>Datasets</span>
+        </button>
+      </div>
+
       {/* Header */}
       <div style={{ marginBottom: "28px" }}>
         <div
@@ -184,12 +206,25 @@ export default function UploadDatasetPage() {
           </div>
 
           {/* Submit */}
-          <div className="flex items-center gap-3">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "0.75rem",
+              width: "100%",
+              maxWidth: "42rem",
+              marginInline: "auto",
+              alignItems: "stretch",
+            }}
+          >
             <button
               type="submit"
               disabled={!file || !name.trim() || uploading}
               className="inline-flex items-center gap-2 rounded-lg"
               style={{
+                justifyContent: "center",
+                width: "100%",
+                minHeight: "2.75rem",
                 background:
                   !file || !name.trim() || uploading
                     ? "var(--bg-elevated)"
@@ -198,7 +233,7 @@ export default function UploadDatasetPage() {
                   !file || !name.trim() || uploading
                     ? "var(--text-tertiary)"
                     : "#08080B",
-                padding: "8px 20px",
+                padding: "0.625rem 1rem",
                 fontSize: "12px",
                 fontWeight: 600,
                 fontFamily: "var(--font-syne)",
@@ -231,13 +266,20 @@ export default function UploadDatasetPage() {
               type="button"
               onClick={() => router.push("/datasets")}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                minHeight: "2.75rem",
                 background: "transparent",
                 border: "1px solid var(--border)",
                 borderRadius: "8px",
-                padding: "8px 16px",
+                padding: "0.625rem 1rem",
                 color: "var(--text-secondary)",
                 fontSize: "12px",
+                fontWeight: 600,
                 fontFamily: "var(--font-syne)",
+                textAlign: "center",
                 cursor: "pointer",
               }}
             >
@@ -249,3 +291,4 @@ export default function UploadDatasetPage() {
     </div>
   );
 }
+

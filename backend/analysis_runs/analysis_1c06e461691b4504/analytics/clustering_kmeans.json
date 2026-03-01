@@ -1,0 +1,7 @@
+{
+  "method": "kmeans",
+  "k": 4,
+  "eps": null,
+  "min_samples": null,
+  "n_rows": 18476
+}

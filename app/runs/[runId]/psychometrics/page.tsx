@@ -74,7 +74,7 @@ export default function PsychometricsPage({ params }: Props) {
   }, [runId]);
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up space-y-6">
+    <div className="page-shell page-standard page-shell--md animate-fade-up space-y-6">
       {/* Breadcrumb */}
       <div
         className="flex items-center gap-2"
@@ -145,7 +145,8 @@ export default function PsychometricsPage({ params }: Props) {
           {/* Fit statistics */}
           <Card>
             <SectionLabel>Fit Statistics</SectionLabel>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="table-scroll">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <Th>Statistic</Th>
@@ -160,13 +161,15 @@ export default function PsychometricsPage({ params }: Props) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
 
           {/* Reliability */}
           <Card>
             <SectionLabel>Reliability</SectionLabel>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="table-scroll">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <Th>Factor</Th>
@@ -183,7 +186,8 @@ export default function PsychometricsPage({ params }: Props) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Card>
 
           {/* Item loadings */}

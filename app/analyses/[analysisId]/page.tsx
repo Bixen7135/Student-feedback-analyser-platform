@@ -5,15 +5,34 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   fetchAnalysisDetail,
+  fetchAnalysisCluster,
+  fetchAnalysisCorrelations,
+  fetchAnalysisDescriptiveAnalytics,
+  fetchAnalysisDiagnostics,
   fetchAnalysisStatus,
   updateAnalysis,
   deleteAnalysis,
+  AnalysisClusterResponse,
+  AnalysisCorrelationsResponse,
+  AnalysisDescriptiveAnalytics,
+  AnalysisDiagnosticsResponse,
   AnalysisRecord,
   AnalysisJob,
   AnalysisSummary,
   ModelApplied,
   getAnalysisExportUrl,
 } from "@/app/lib/api";
+import { buildFilterSearchParams } from "@/app/lib/filters";
+import {
+  buildCategoricalSections,
+  buildClusterPoints,
+  buildConfusionCells,
+  buildCorrelationCells,
+} from "@/app/lib/analytics";
+import { ChartCard } from "@/app/components/charts/ChartCard";
+import { BarListChart } from "@/app/components/charts/BarListChart";
+import { Heatmap } from "@/app/components/charts/Heatmap";
+import { ScatterPlot } from "@/app/components/charts/ScatterPlot";
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "var(--success)",
@@ -49,6 +68,10 @@ export default function AnalysisDetailPage() {
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [descriptive, setDescriptive] = useState<AnalysisDescriptiveAnalytics | null>(null);
+  const [correlations, setCorrelations] = useState<AnalysisCorrelationsResponse | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AnalysisDiagnosticsResponse | null>(null);
+  const [clusters, setClusters] = useState<AnalysisClusterResponse | null>(null);
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -160,6 +183,9 @@ export default function AnalysisDetailPage() {
   const summary: AnalysisSummary | null =
     (job?.result_summary as AnalysisSummary | null) ??
     (analysis?.result_summary as AnalysisSummary | null) ?? null;
+  const modelsApplied = Array.isArray(summary?.models_applied)
+    ? summary.models_applied
+    : [];
 
   const name = analysis?.name ?? job?.name ?? "";
   const description = analysis?.description ?? job?.description ?? "";
@@ -167,10 +193,46 @@ export default function AnalysisDetailPage() {
   const comments = (analysis as AnalysisRecord | null)?.comments ?? "";
   const createdAt = analysis?.created_at ?? job?.started_at;
   const modelIds = analysis?.model_ids ?? job?.model_ids ?? [];
+  const analyticsTask =
+    modelsApplied.find((item) => !item.error)?.task ?? "sentiment";
+
+  useEffect(() => {
+    if (currentStatus !== "completed") return;
+    let active = true;
+    Promise.allSettled([
+      fetchAnalysisDescriptiveAnalytics(analysisId),
+      fetchAnalysisCorrelations(analysisId),
+      fetchAnalysisDiagnostics(analysisId, { task: analyticsTask }),
+      fetchAnalysisCluster(analysisId, { method: "kmeans", k: 4, reuse_embeddings: true }),
+    ]).then(([a, b, c, d]) => {
+      if (!active) return;
+      if (a.status === "fulfilled") setDescriptive(a.value);
+      if (b.status === "fulfilled") setCorrelations(b.value);
+      if (c.status === "fulfilled") setDiagnostics(c.value);
+      if (c.status === "rejected") setDiagnostics(null);
+      if (d.status === "fulfilled") setClusters(d.value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [analysisId, analyticsTask, currentStatus]);
+
+  const categoricalSections = descriptive ? buildCategoricalSections(descriptive.summary, 3, 6) : [];
+  const correlationCells = correlations ? buildCorrelationCells(correlations.correlations) : [];
+  const confusionCells = diagnostics ? buildConfusionCells(diagnostics.diagnostics) : [];
+  const clusterPoints = clusters ? buildClusterPoints(clusters) : [];
+
+  function resultsHref(filter?: { col: string; op: "eq"; val: string }): string {
+    const params = buildFilterSearchParams({
+      filters: filter ? [filter] : [],
+    });
+    const qs = params.toString();
+    return `/analyses/${analysisId}/results${qs ? `?${qs}` : ""}`;
+  }
 
   if (loading) {
     return (
-      <div style={{ padding: "40px", color: "var(--text-tertiary)", fontSize: "13px" }}>
+      <div className="page-shell page-standard page-shell--md" style={{ color: "var(--text-tertiary)", fontSize: "13px" }}>
         Loading analysis…
       </div>
     );
@@ -178,26 +240,36 @@ export default function AnalysisDetailPage() {
 
   if (error && !analysis && !job) {
     return (
-      <div style={{ padding: "40px", color: "var(--error, #ef4444)", fontSize: "13px" }}>
+      <div className="page-shell page-standard page-shell--md" style={{ color: "var(--error, #ef4444)", fontSize: "13px" }}>
         {error}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "32px 40px", maxWidth: "1000px", margin: "0 auto" }}>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "20px" }}>
-        <Link href="/analyses" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>
-          Analyses
+    <div className="page-shell page-standard page-shell--md animate-fade-up">
+      {/* Back link */}
+      <div style={{ marginBottom: "20px" }}>
+        <Link
+          href="/analyses"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--text-tertiary)",
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+          }}
+        >
+          <span aria-hidden="true">&larr;</span>
+          <span>Analyses</span>
         </Link>
-        {" / "}
-        <span style={{ color: "var(--text-secondary)" }}>{name || analysisId.slice(0, 20)}</span>
       </div>
 
       {/* Header */}
-      <div className="flex items-start justify-between" style={{ marginBottom: "24px" }}>
-        <div>
+      <div className="analysis-detail__header" style={{ marginBottom: "24px" }}>
+        <div className="analysis-detail__header-main">
           {editing ? (
             <input
               type="text"
@@ -213,7 +285,7 @@ export default function AnalysisDetailPage() {
                 border: "none",
                 borderBottom: "1px solid var(--gold)",
                 outline: "none",
-                width: "400px",
+                width: "min(100%, 24rem)",
                 padding: "2px 0",
               }}
             />
@@ -222,7 +294,7 @@ export default function AnalysisDetailPage() {
               style={{
                 fontFamily: "var(--font-syne)",
                 fontWeight: 700,
-                fontSize: "22px",
+                fontSize: "clamp(20px, 2vw, 24px)",
                 color: "var(--text-primary)",
                 margin: 0,
               }}
@@ -230,7 +302,7 @@ export default function AnalysisDetailPage() {
               {name || <span style={{ color: "var(--text-tertiary)" }}>{analysisId.slice(0, 20)}…</span>}
             </h1>
           )}
-          <div className="flex items-center gap-3" style={{ marginTop: "6px" }}>
+          <div className="flex items-center gap-3" style={{ marginTop: "6px", flexWrap: "wrap" }}>
             <div className="flex items-center gap-1.5">
               <span
                 style={{
@@ -267,113 +339,70 @@ export default function AnalysisDetailPage() {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="analysis-detail__actions">
           {currentStatus === "completed" && !editing && (
-            <>
+            <div className="analysis-detail__action-group analysis-detail__action-group--primary">
               <Link
                 href={`/analyses/${analysisId}/results`}
-                style={{
-                  padding: "7px 14px",
-                  border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  textDecoration: "none",
-                  fontWeight: 500,
-                }}
+                className="analysis-detail__action analysis-detail__action--primary"
               >
                 View Results
               </Link>
               <a
                 href={getAnalysisExportUrl(analysisId, "csv")}
                 download
-                style={{
-                  padding: "7px 14px",
-                  border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  textDecoration: "none",
-                  fontWeight: 500,
-                }}
+                className="analysis-detail__action analysis-detail__action--secondary"
               >
                 Export CSV
               </a>
-            </>
+            </div>
           )}
-          {!editing ? (
+          <div className="analysis-detail__action-group analysis-detail__action-group--manage">
+            {!editing ? (
             <button
+              type="button"
               onClick={() => setEditing(true)}
-              style={{
-                padding: "7px 14px",
-                border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
-                fontSize: "12px",
-                color: "var(--text-secondary)",
-                background: "none",
-                cursor: "pointer",
-              }}
+              className="analysis-detail__action analysis-detail__action--ghost"
             >
               Edit
             </button>
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => setEditing(false)}
-                style={{
-                  padding: "7px 14px",
-                  border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  background: "none",
-                  cursor: "pointer",
-                }}
+                className="analysis-detail__action analysis-detail__action--ghost"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSave}
                 disabled={saving}
-                style={{
-                  padding: "7px 16px",
-                  background: "var(--gold)",
-                  color: "#000",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: saving ? "not-allowed" : "pointer",
-                }}
+                className="analysis-detail__action analysis-detail__action--primary"
               >
                 {saving ? "Saving…" : "Save"}
               </button>
             </>
           )}
           <button
+            type="button"
             onClick={handleDelete}
             disabled={deleting}
-            style={{
-              padding: "7px 14px",
-              border: "1px solid rgba(239,68,68,0.4)",
-              borderRadius: "6px",
-              fontSize: "12px",
-              color: confirmDelete ? "var(--error, #ef4444)" : "var(--text-tertiary)",
-              background: "none",
-              cursor: "pointer",
-              fontWeight: confirmDelete ? 600 : 400,
-            }}
+            className={`analysis-detail__action analysis-detail__action--danger${confirmDelete ? " is-confirm" : ""}`}
           >
             {deleting ? "…" : confirmDelete ? "Confirm Delete?" : "Delete"}
           </button>
-          {confirmDelete && (
+            {confirmDelete && (
             <button
+              type="button"
               onClick={() => setConfirmDelete(false)}
-              style={{ padding: "7px 10px", border: "none", background: "none", fontSize: "12px", color: "var(--text-tertiary)", cursor: "pointer" }}
+              className="analysis-detail__action analysis-detail__action--plain"
             >
-              Cancel
+              Cancel delete
             </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -481,7 +510,14 @@ export default function AnalysisDetailPage() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "24px" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
+          gap: "16px",
+          marginBottom: "24px",
+        }}
+      >
         {/* Dataset info */}
         <div
           style={{
@@ -541,7 +577,7 @@ export default function AnalysisDetailPage() {
       </div>
 
       {/* Results summary */}
-      {summary && summary.models_applied && summary.models_applied.length > 0 && (
+      {summary && modelsApplied.length > 0 && (
         <div>
           <h2 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "12px" }}>
             Prediction Summary
@@ -561,7 +597,7 @@ export default function AnalysisDetailPage() {
           </div>
 
           <div className="flex flex-col gap-4">
-            {summary.models_applied.map((m: ModelApplied) => (
+            {modelsApplied.map((m: ModelApplied) => (
               <div
                 key={m.model_id}
                 style={{
@@ -631,7 +667,7 @@ export default function AnalysisDetailPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-3" style={{ marginTop: "20px" }}>
+          <div className="flex gap-3" style={{ marginTop: "20px", flexWrap: "wrap" }}>
             <Link
               href={`/analyses/${analysisId}/results`}
               style={{
@@ -674,6 +710,48 @@ export default function AnalysisDetailPage() {
             >
               Export JSON
             </a>
+          </div>
+        </div>
+      )}
+
+      {currentStatus === "completed" && (
+        <div style={{ marginTop: "24px" }}>
+          <h2 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)", marginBottom: "12px" }}>
+            Analytics Snapshot
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {categoricalSections.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
+                {categoricalSections.map((section) => (
+                  <ChartCard key={section.column} title={section.column} subtitle="Click through to open the filtered results view.">
+                    <BarListChart
+                      series={section.series}
+                      onSelect={(value) => {
+                        router.push(resultsHref({ col: section.column, op: "eq", val: value }));
+                      }}
+                    />
+                  </ChartCard>
+                ))}
+              </div>
+            )}
+
+            {correlationCells.length > 0 && (
+              <ChartCard title="Correlation Heatmap" subtitle="Pairwise associations across the analysis output.">
+                <Heatmap cells={correlationCells} />
+              </ChartCard>
+            )}
+
+            {diagnostics && (
+              <ChartCard title={`${diagnostics.task} diagnostics`} subtitle={`Label column: ${diagnostics.label_col}`}>
+                <Heatmap cells={confusionCells} />
+              </ChartCard>
+            )}
+
+            {clusters && (
+              <ChartCard title="Embeddings" subtitle="Clustered 2D projection of the result rows.">
+                <ScatterPlot points={clusterPoints} />
+              </ChartCard>
+            )}
           </div>
         </div>
       )}

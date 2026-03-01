@@ -193,17 +193,30 @@ export default function RunDetailPage({ params }: Props) {
   const completedCount = STAGE_NAMES.filter((s) => TERMINAL.has(run.stages[s]?.status ?? "")).length;
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }} className="animate-fade-up space-y-6">
+    <div className="page-shell page-standard page-shell--md animate-fade-up space-y-6">
 
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2" style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-tertiary)" }}>
-        <Link href="/runs" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Runs</Link>
+      {/* Back link */}
+      <div style={{ marginBottom: "6px", fontSize: "0" }}>
+        <Link
+          href="/runs"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            color: "var(--text-tertiary)",
+            textDecoration: "none",
+            fontFamily: "var(--font-jetbrains)",
+            fontSize: "11px",
+          }}
+        >
+          <span aria-hidden="true">&larr;</span>
+          <span>Runs</span>
+        </Link>
         <span>›</span>
-        <span style={{ color: "var(--text-secondary)" }}>{runId}</span>
       </div>
 
       {/* Heading + live banner */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4" style={{ flexWrap: "wrap" }}>
         <div>
           <div style={{ fontFamily: "var(--font-syne)", fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: "6px" }}>
             Run Detail

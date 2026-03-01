@@ -110,7 +110,7 @@ const labelStyle: React.CSSProperties = {
 
 function StepIndicator({ step }: { step: number }) {
   return (
-    <div className="flex items-center gap-0" style={{ marginBottom: "28px" }}>
+    <div className="flex flex-wrap items-center gap-y-3" style={{ marginBottom: "28px" }}>
       {STEP_LABELS.map((label, i) => (
         <div key={label} className="flex items-center">
           <div className="flex items-center gap-2">
@@ -604,7 +604,7 @@ function ProgressView({
   const heading = isDone ? (hasFailed ? "Run Encountered Errors" : "Pipeline Complete") : "Pipeline Running…";
 
   return (
-    <div style={{ padding: "32px", maxWidth: "640px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--xs animate-fade-up">
       <div style={{ marginBottom: "28px" }}>
         <div style={{ fontFamily: "var(--font-syne)", fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: "6px" }}>
           Pipeline
@@ -817,15 +817,52 @@ export default function NewRunPage() {
   }
 
   return (
-    <div style={{ padding: "32px", maxWidth: "640px" }} className="animate-fade-up">
+    <div className="page-shell page-standard page-shell--xs animate-fade-up">
       {/* Page header */}
-      <div style={{ marginBottom: "28px" }}>
-        <div style={{ fontFamily: "var(--font-syne)", fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: "6px" }}>
-          Pipeline
+      <div
+        className="flex items-start justify-between gap-3"
+        style={{ marginBottom: "28px", flexWrap: "wrap" }}
+      >
+        <div style={{ width: "100%" }}>
+          <div style={{ fontFamily: "var(--font-syne)", fontSize: "9.5px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: "6px" }}>
+            Pipeline
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              width: "100%",
+            }}
+          >
+            <h1 style={{ fontFamily: "var(--font-syne)", fontWeight: 700, fontSize: "22px", color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+              <span>Run Pipeline</span>
+            </h1>
+            <Link
+              href="/training"
+              className="inline-flex items-center gap-2 rounded-lg"
+              style={{
+                background: "transparent",
+                color: "var(--text-secondary)",
+                padding: "8px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                fontFamily: "var(--font-syne)",
+                letterSpacing: "0.04em",
+                textDecoration: "none",
+                border: "1px solid var(--border-dim)",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2 9.5L4.6 6.1L6.7 8.2L8.8 4.8L10.5 6.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="10" cy="3.5" r="1.2" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+              Training
+            </Link>
+          </div>
         </div>
-        <h1 style={{ fontFamily: "var(--font-syne)", fontWeight: 700, fontSize: "22px", color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
-          Launch New Run
-        </h1>
       </div>
 
       <StepIndicator step={step} />
@@ -875,3 +912,4 @@ export default function NewRunPage() {
     </div>
   );
 }
+
