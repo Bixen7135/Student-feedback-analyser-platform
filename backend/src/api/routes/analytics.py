@@ -252,6 +252,28 @@ def _resolve_analysis_model(
     )
 
 
+def _compute_embeddings_payload(
+    *,
+    df: pd.DataFrame,
+    text_col: str,
+    analysis_id: str,
+    model_meta: Any = None,
+    reuse_cached: bool = True,
+    max_features: int = 512,
+) -> dict[str, Any]:
+    try:
+        return compute_or_load_embeddings(
+            df=df,
+            text_col=text_col,
+            analysis_dir=_get_artifacts_dir() / analysis_id,
+            model_meta=model_meta,
+            reuse_cached=reuse_cached,
+            max_features=max_features,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.get("/datasets/{dataset_id}/descriptive", response_model=dict)
 async def get_dataset_descriptive(
     dataset_id: str,
@@ -458,10 +480,10 @@ async def post_analysis_embeddings(
     )
     text_col = _resolve_analysis_text_col(analysis, df)
     model_meta = _resolve_embeddings_model(analysis, model_registry, body.model_id)
-    payload = compute_or_load_embeddings(
+    payload = _compute_embeddings_payload(
         df=df,
         text_col=text_col,
-        analysis_dir=_get_artifacts_dir() / analysis_id,
+        analysis_id=analysis_id,
         model_meta=model_meta,
         reuse_cached=body.reuse_cached,
         max_features=body.max_features,
@@ -489,10 +511,10 @@ async def post_analysis_cluster(
         df, _ = _load_analysis_df(analysis_id=analysis_id, db=db)
         text_col = _resolve_analysis_text_col(analysis, df)
         model_meta = _resolve_embeddings_model(analysis, model_registry, body.model_id)
-        compute_or_load_embeddings(
+        _compute_embeddings_payload(
             df=df,
             text_col=text_col,
-            analysis_dir=_get_artifacts_dir() / analysis_id,
+            analysis_id=analysis_id,
             model_meta=model_meta,
             reuse_cached=body.reuse_embeddings,
         )
@@ -527,10 +549,10 @@ async def post_analysis_outliers(
         df, _ = _load_analysis_df(analysis_id=analysis_id, db=db)
         text_col = _resolve_analysis_text_col(analysis, df)
         model_meta = _resolve_embeddings_model(analysis, model_registry, body.model_id)
-        compute_or_load_embeddings(
+        _compute_embeddings_payload(
             df=df,
             text_col=text_col,
-            analysis_dir=_get_artifacts_dir() / analysis_id,
+            analysis_id=analysis_id,
             model_meta=model_meta,
             reuse_cached=body.reuse_embeddings,
         )

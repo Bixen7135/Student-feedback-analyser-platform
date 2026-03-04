@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Syne, DM_Sans, JetBrains_Mono } from "next/font/google";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
-import { Sidebar } from "@/app/components/Sidebar";
+import { AppShell } from "@/app/components/AppShell";
+import { isLocale, resolvePreferredLocale } from "@/app/lib/i18n/catalog";
+import { LOCALE_COOKIE_KEY } from "@/app/lib/i18n/constants";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -28,24 +31,31 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Feedback Lab - Analysis Platform",
-  description:
-    "Multilingual student feedback analysis - batch-only, reproducible pipeline",
+  title: "Feedback Lab",
+  description: "Localized student feedback analysis platform",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const headerStore = await headers();
+  const savedLocale = cookieStore.get(LOCALE_COOKIE_KEY)?.value;
+  const initialLocale =
+    savedLocale && isLocale(savedLocale)
+      ? savedLocale
+      : resolvePreferredLocale(headerStore.get("accept-language"));
+
   return (
     <html
-      lang="en"
+      lang={initialLocale}
+      data-locale={initialLocale}
       className={`${syne.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}
     >
       <body className="app-frame">
-        <Sidebar />
-        <main className="app-main">{children}</main>
+        <AppShell initialLocale={initialLocale}>{children}</AppShell>
       </body>
     </html>
   );

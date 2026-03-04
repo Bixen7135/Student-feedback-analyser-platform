@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { LOCALE_META, SUPPORTED_LOCALES } from "@/app/lib/i18n/catalog";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 type ApiStatus = "connecting" | "online" | "offline";
 
@@ -69,14 +71,15 @@ const navItems: NavItem[] = [
 
 const STATUS_CONFIG: Record<ApiStatus, { label: string; color: string; pulse: boolean }> = {
   connecting: { label: "connecting...", color: "var(--warning, #f59e0b)", pulse: true },
-  online: { label: "api | port 8000", color: "var(--success)", pulse: false },
-  offline: { label: "api | offline", color: "var(--error, #ef4444)", pulse: false },
+  online: { label: "API | port 8000", color: "var(--success)", pulse: false },
+  offline: { label: "API | offline", color: "var(--error, #ef4444)", pulse: false },
 };
 
 const MOBILE_NAV_MEDIA_QUERY = "(max-width: 56rem)";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { locale, setLocale, t } = useI18n();
   const [apiStatus, setApiStatus] = useState<ApiStatus>("connecting");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
@@ -116,18 +119,10 @@ export function Sidebar() {
 
     syncViewport();
 
-    if ("addEventListener" in mediaQuery) {
-      mediaQuery.addEventListener("change", syncViewport);
-    } else {
-      mediaQuery.addListener(syncViewport);
-    }
+    mediaQuery.addEventListener("change", syncViewport);
 
     return () => {
-      if ("removeEventListener" in mediaQuery) {
-        mediaQuery.removeEventListener("change", syncViewport);
-      } else {
-        mediaQuery.removeListener(syncViewport);
-      }
+      mediaQuery.removeEventListener("change", syncViewport);
     };
   }, []);
 
@@ -170,14 +165,14 @@ export function Sidebar() {
             </svg>
           </div>
           <div className="app-sidebar__brand-meta">
-            <div className="app-sidebar__brand-title">Feedback Lab</div>
+            <div className="app-sidebar__brand-title">{t("Feedback Lab")}</div>
             <div className="app-sidebar__brand-version">v0.1.0</div>
           </div>
         </div>
         <button
           type="button"
           className="app-sidebar__mobile-toggle"
-          aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-label={t(isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu")}
           aria-expanded={isMobileMenuOpen}
           aria-controls="app-sidebar-drawer"
           onClick={() => setIsMobileMenuOpen((open) => !open)}
@@ -192,7 +187,7 @@ export function Sidebar() {
         <button
           type="button"
           className="app-sidebar__mobile-overlay"
-          aria-label="Close navigation menu"
+          aria-label={t("Close navigation menu")}
           onClick={() => setIsMobileMenuOpen(false)}
         />
       ) : null}
@@ -203,7 +198,7 @@ export function Sidebar() {
         aria-hidden={isMobileViewport ? !isMobileMenuOpen : undefined}
       >
         <nav className="app-sidebar__nav">
-          <div className="app-sidebar__label">Navigation</div>
+          <div className="app-sidebar__label">{t("Navigation")}</div>
           <div className="app-sidebar__list">
             {navItems.map((item) => {
               const isActive =
@@ -228,7 +223,7 @@ export function Sidebar() {
                   tabIndex={disableNavTabbing ? -1 : undefined}
                 >
                   <span className="app-sidebar__icon">{item.icon}</span>
-                  <span className="app-sidebar__text">{item.label}</span>
+                  <span className="app-sidebar__text">{t(item.label)}</span>
                 </Link>
               );
             })}
@@ -244,9 +239,47 @@ export function Sidebar() {
                 opacity: STATUS_CONFIG[apiStatus].pulse ? 0.7 : 1,
               }}
             />
-            <span className="app-sidebar__status-copy">{STATUS_CONFIG[apiStatus].label}</span>
+            <span className="app-sidebar__status-copy">{t(STATUS_CONFIG[apiStatus].label)}</span>
           </div>
-          <div className="app-sidebar__locale">RU | KZ | multilingual</div>
+          <div
+            className="app-sidebar__locale"
+            style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}
+          >
+            <span style={{ fontSize: "10px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              {t("Interface language")}
+            </span>
+            <div
+              role="group"
+              aria-label={t("Language switcher")}
+              style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}
+            >
+              {SUPPORTED_LOCALES.map((code) => {
+                const active = locale === code;
+                return (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setLocale(code)}
+                    aria-pressed={active}
+                    title={LOCALE_META[code].nativeName}
+                    style={{
+                      border: `1px solid ${active ? "var(--gold)" : "var(--border-dim)"}`,
+                      background: active ? "var(--gold-faint)" : "transparent",
+                      color: active ? "var(--gold)" : "var(--text-secondary)",
+                      borderRadius: "999px",
+                      padding: "4px 8px",
+                      fontSize: "10px",
+                      fontFamily: "var(--font-syne)",
+                      letterSpacing: "0.08em",
+                      cursor: active ? "default" : "pointer",
+                    }}
+                  >
+                    {LOCALE_META[code].buttonLabel}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </aside>

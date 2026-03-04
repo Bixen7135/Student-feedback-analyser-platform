@@ -107,6 +107,62 @@ def test_create_run_with_name(client):
     assert data["name"] == "baseline-v1"
 
 
+def test_create_run_with_pipeline_training_config(client):
+    """POST /api/runs stores and returns the canonical pipeline text-model config."""
+    resp = client.post(
+        "/api/runs",
+        json={
+            "seed": 42,
+            "pipeline_training": {
+                "model_type": "xlm_roberta",
+                "config": {
+                    "batch_size": 8,
+                    "epochs": 2,
+                },
+            },
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pipeline_training"]["model_type"] == "xlm_roberta"
+    assert data["pipeline_training"]["config"]["pretrained_model"] == "xlm-roberta-base"
+    assert data["pipeline_training"]["config"]["batch_size"] == 8
+    assert data["pipeline_training"]["config"]["epochs"] == 2
+
+
+def test_start_run_full_rejects_xlm_pipeline_when_transformer_deps_missing(client, monkeypatch):
+    """run_full should fail synchronously before the background worker starts."""
+    from src.text_tasks.xlm_roberta_classifier import XlmRobertaDependencyError
+
+    create_resp = client.post(
+        "/api/runs",
+        json={
+            "seed": 42,
+            "pipeline_training": {
+                "model_type": "xlm_roberta",
+                "config": {
+                    "batch_size": 8,
+                    "epochs": 2,
+                },
+            },
+        },
+    )
+    assert create_resp.status_code == 200
+    run_id = create_resp.json()["run_id"]
+
+    def _missing_runtime():
+        raise XlmRobertaDependencyError(
+            "XlmRobertaClassifier requires optional dependencies 'torch' and "
+            "'transformers'. Install with: pip install \"sfap-backend[transformers]\""
+        )
+
+    monkeypatch.setattr("src.api.routes.runs.ensure_xlm_roberta_runtime_available", _missing_runtime)
+
+    resp = client.post(f"/api/runs/{run_id}/stages/run_full/start")
+    assert resp.status_code == 422
+    assert "sfap-backend[transformers]" in resp.json()["detail"]
+
+
 def test_get_run_includes_new_fields(client):
     """GET /api/runs/{run_id} also exposes Phase 1 fields."""
     create_resp = client.post("/api/runs", json={"seed": 42, "name": "test-run"})

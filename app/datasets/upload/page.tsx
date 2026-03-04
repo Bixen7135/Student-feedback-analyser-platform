@@ -56,7 +56,7 @@ export default function UploadDatasetPage() {
   const inputStyle = {
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "8px 12px",
     color: "var(--text-primary)",
     fontSize: "12px",
@@ -273,7 +273,7 @@ export default function UploadDatasetPage() {
                 minHeight: "2.75rem",
                 background: "transparent",
                 border: "1px solid var(--border)",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-unified)",
                 padding: "0.625rem 1rem",
                 color: "var(--text-secondary)",
                 fontSize: "12px",

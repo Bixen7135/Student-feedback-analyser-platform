@@ -390,7 +390,7 @@ async def register_model(
     """Register a trained model in the registry."""
     source_path = Path(req.source_model_path)
     if not source_path.exists():
-        raise HTTPException(status_code=400, detail=f"Model file not found: {req.source_model_path}")
+        raise HTTPException(status_code=400, detail=f"Model artifact not found: {req.source_model_path}")
 
     metrics_path = Path(req.source_metrics_path) if req.source_metrics_path else None
 

@@ -5,14 +5,17 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA  # type: ignore
 from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
 
+from src.storage.model_registry import resolve_model_artifact_path
 from src.storage.models import ModelMeta
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 
 _KNOWN_LABEL_COLUMNS = {"language", "sentiment_class", "detail_level"}
 
@@ -88,11 +91,19 @@ def _vectorize_texts(
     max_features: int,
 ) -> tuple[Any, str]:
     if model_meta is not None:
+        artifact_path = resolve_model_artifact_path(model_meta.storage_path)
+        if model_meta.model_type == MODEL_TYPE_XLM_ROBERTA:
+            clf = XlmRobertaClassifier.load(artifact_path)
+            embeddings = clf.embed_texts(texts, pooling="mean")
+            if embeddings.size == 0:
+                return np.zeros((len(texts), 1), dtype=float), f"model_embeddings:{model_meta.id}:mean_empty"
+            return embeddings, f"model_embeddings:{model_meta.id}:mean"
+
         try:
             if model_meta.model_type == "tfidf":
-                clf = TfidfClassifier.load(Path(model_meta.storage_path) / "model.joblib")
+                clf = TfidfClassifier.load(artifact_path)
             elif model_meta.model_type == "char_ngram":
-                clf = CharNgramClassifier.load(Path(model_meta.storage_path) / "model.joblib")
+                clf = CharNgramClassifier.load(artifact_path)
             else:
                 clf = None
             pipeline = getattr(clf, "_pipeline", None) if clf is not None else None

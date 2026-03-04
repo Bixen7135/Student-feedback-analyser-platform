@@ -8,6 +8,11 @@ import {
   AnalysisRecord,
   AnalysisComparison,
 } from "@/app/lib/api";
+import {
+  formatLocalizedDate,
+  formatLocalizedDateTime,
+  useDateTimeLocale,
+} from "@/app/lib/i18n/date-time";
 
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
@@ -26,6 +31,7 @@ const TASK_LABELS: Record<string, string> = {
 };
 
 export default function CompareAnalysesPage() {
+  const dateTimeLocale = useDateTimeLocale();
   const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
   const [analysesLoading, setAnalysesLoading] = useState(true);
   const [analysesError, setAnalysesError] = useState<string | null>(null);
@@ -131,7 +137,7 @@ export default function CompareAnalysesPage() {
                   width: "100%",
                   padding: "8px 12px",
                   border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                   color: "var(--text-primary)",
                   fontSize: "13px",
@@ -140,7 +146,7 @@ export default function CompareAnalysesPage() {
                 <option value="">Select analysis…</option>
                 {completedAnalyses.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name || a.id.slice(0, 20)} — {a.dataset_id?.slice(0, 10)} · {new Date(a.created_at).toLocaleDateString()}
+                    {a.name || a.id.slice(0, 20)} — {a.dataset_id?.slice(0, 10)} · {formatLocalizedDate(a.created_at, dateTimeLocale)}
                   </option>
                 ))}
               </select>
@@ -159,7 +165,7 @@ export default function CompareAnalysesPage() {
             background: id1 && id2 && id1 !== id2 && !comparing ? "var(--gold)" : "var(--border-dim)",
             color: id1 && id2 && id1 !== id2 && !comparing ? "#000" : "var(--text-tertiary)",
             border: "none",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             fontSize: "13px",
             fontWeight: 600,
             cursor: id1 && id2 && id1 !== id2 ? "pointer" : "not-allowed",
@@ -178,7 +184,7 @@ export default function CompareAnalysesPage() {
         <div
           style={{
             padding: "12px 16px",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             background: "rgba(239,68,68,0.07)",
             border: "1px solid rgba(239,68,68,0.3)",
             color: "var(--error, #ef4444)",
@@ -208,7 +214,7 @@ export default function CompareAnalysesPage() {
                 style={{
                   padding: "16px 20px",
                   border: `1px solid ${i === 0 ? "var(--gold-muted)" : "var(--border-dim)"}`,
-                  borderRadius: "8px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                 }}
               >
@@ -227,7 +233,10 @@ export default function CompareAnalysesPage() {
                   {run.dataset_version != null && ` v${run.dataset_version}`}
                 </div>
                 <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "3px" }}>
-                  {new Date(run.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                  {formatLocalizedDateTime(run.created_at, dateTimeLocale, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                 </div>
               </div>
             ))}
@@ -239,7 +248,7 @@ export default function CompareAnalysesPage() {
               style={{
                 padding: "14px 20px",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "8px",
+                borderRadius: "var(--radius-unified)",
                 background: "var(--bg-surface)",
                 marginBottom: "24px",
               }}
@@ -285,7 +294,7 @@ export default function CompareAnalysesPage() {
                       style={{
                         padding: "20px",
                         border: "1px solid var(--border-dim)",
-                        borderRadius: "8px",
+                        borderRadius: "var(--radius-unified)",
                         background: "var(--bg-surface)",
                       }}
                     >

@@ -57,7 +57,7 @@ export function SegmentTable({ groups, groupBy, metricCol }: SegmentTableProps) 
       <div
         style={{
           overflowX: "auto",
-          borderRadius: "6px",
+          borderRadius: "var(--radius-unified)",
           border: "1px solid var(--border-dim)",
         }}
       >

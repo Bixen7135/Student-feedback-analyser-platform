@@ -11,6 +11,7 @@ import pandas as pd
 from src.text_tasks.base import ClassificationResult, TextClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -24,6 +25,7 @@ TASK_LABEL_COLS = {
 MODEL_FACTORY: dict[str, type[TextClassifier]] = {
     "tfidf": TfidfClassifier,
     "char_ngram": CharNgramClassifier,
+    "xlm_roberta": XlmRobertaClassifier,
 }
 
 
@@ -83,7 +85,7 @@ def train_single_task(
     # Save model
     model_dir = run_dir / "text_tasks" / task_name / model_type
     model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "model.joblib"
+    model_path = model_dir / ("model" if model_type == "xlm_roberta" else "model.joblib")
     clf.save(model_path)
 
     # Save metrics

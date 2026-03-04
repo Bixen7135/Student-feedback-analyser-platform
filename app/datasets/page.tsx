@@ -9,6 +9,7 @@ import {
   DatasetSummary,
   DatasetDeleteResult,
 } from "@/app/lib/api";
+import { formatLocalizedDate, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -18,6 +19,7 @@ function formatBytes(bytes: number): string {
 
 export default function DatasetsPage() {
   const router = useRouter();
+  const dateTimeLocale = useDateTimeLocale();
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,13 @@ export default function DatasetsPage() {
         setDeleteWarning(result);
         return;
       }
+      const nextTotal = Math.max(0, total - 1);
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / perPage));
       setDatasets((prev) => prev.filter((d) => d.id !== id));
+      setTotal(nextTotal);
+      if (page > nextTotalPages) {
+        setPage(nextTotalPages);
+      }
       setConfirmId(null);
       setDeleteWarning(null);
     } catch (e: unknown) {
@@ -69,7 +77,9 @@ export default function DatasetsPage() {
     }
   }
 
-  const totalPages = Math.ceil(total / perPage);
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const rangeStart = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const rangeEnd = total === 0 ? 0 : Math.min(total, page * perPage);
 
   return (
     <div className="page-shell page-standard page-shell--md animate-fade-up">
@@ -158,13 +168,12 @@ export default function DatasetsPage() {
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             padding: "8px 14px",
             color: "var(--text-primary)",
             fontSize: "12px",
             fontFamily: "var(--font-jetbrains)",
             width: "100%",
-            maxWidth: "400px",
           }}
         />
       </div>
@@ -293,7 +302,7 @@ export default function DatasetsPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {new Date(ds.created_at).toLocaleDateString()}
+                    {formatLocalizedDate(ds.created_at, dateTimeLocale)}
                   </span>
 
                   {isConfirming ? (
@@ -317,7 +326,7 @@ export default function DatasetsPage() {
                             style={{
                               background: "var(--error-dim)",
                               border: "1px solid var(--error)",
-                              borderRadius: "4px",
+                              borderRadius: "var(--radius-unified)",
                               color: "var(--error)",
                               fontFamily: "var(--font-jetbrains)",
                               fontSize: "10px",
@@ -348,7 +357,7 @@ export default function DatasetsPage() {
                             style={{
                               background: "transparent",
                               border: "1px solid var(--border-dim)",
-                              borderRadius: "4px",
+                              borderRadius: "var(--radius-unified)",
                               color: "var(--text-tertiary)",
                               fontFamily: "var(--font-jetbrains)",
                               fontSize: "10px",
@@ -364,7 +373,7 @@ export default function DatasetsPage() {
                             style={{
                               background: "var(--error-dim)",
                               border: "1px solid var(--error)",
-                              borderRadius: "4px",
+                              borderRadius: "var(--radius-unified)",
                               color: "var(--error)",
                               fontFamily: "var(--font-jetbrains)",
                               fontSize: "10px",
@@ -390,7 +399,7 @@ export default function DatasetsPage() {
                         color: "var(--text-tertiary)",
                         display: "flex",
                         alignItems: "center",
-                        borderRadius: "4px",
+                        borderRadius: "var(--radius-unified)",
                         transition: "opacity 0.15s",
                       }}
                       onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
@@ -453,57 +462,68 @@ export default function DatasetsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {!loading && !error && total > 0 && (
         <div
-          className="flex items-center justify-center gap-2"
-          style={{ marginTop: "20px" }}
+          className="runs-page__pagination-bar"
+          style={{ marginTop: "14px", flexWrap: "wrap" }}
         >
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
+          <div
+            className="runs-page__pagination-summary"
             style={{
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              padding: "4px 12px",
-              color: page === 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
               fontSize: "11px",
               fontFamily: "var(--font-jetbrains)",
-              cursor: page === 1 ? "default" : "pointer",
-              opacity: page === 1 ? 0.5 : 1,
-            }}
-          >
-            Prev
-          </button>
-          <span
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "11px",
               color: "var(--text-tertiary)",
             }}
           >
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            style={{
-              background: "var(--bg-elevated)",
-              border: "1px solid var(--border)",
-              borderRadius: "6px",
-              padding: "4px 12px",
-              color:
-                page === totalPages
-                  ? "var(--text-tertiary)"
-                  : "var(--text-secondary)",
-              fontSize: "11px",
-              fontFamily: "var(--font-jetbrains)",
-              cursor: page === totalPages ? "default" : "pointer",
-              opacity: page === totalPages ? 0.5 : 1,
-            }}
-          >
-            Next
-          </button>
+            Showing {rangeStart}-{rangeEnd} of {total}
+          </div>
+          <div className="runs-page__pagination-controls">
+            <button
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page <= 1}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "var(--radius-unified)",
+                color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page <= 1 ? "not-allowed" : "pointer",
+                opacity: page <= 1 ? 0.5 : 1,
+              }}
+            >
+              Prev
+            </button>
+            <span
+              style={{
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                color: "var(--text-tertiary)",
+                minWidth: "64px",
+                textAlign: "center",
+              }}
+            >
+              Page {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page >= totalPages}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-dim)",
+                borderRadius: "var(--radius-unified)",
+                color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "10px",
+                padding: "4px 10px",
+                cursor: page >= totalPages ? "not-allowed" : "pointer",
+                opacity: page >= totalPages ? 0.5 : 1,
+              }}
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

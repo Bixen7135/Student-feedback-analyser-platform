@@ -73,7 +73,7 @@ export default function ClassificationPage({ params }: Props) {
               onClick={() => setActiveTask(t)}
               style={{
                 padding: "6px 14px",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "12px",
                 fontWeight: active ? 600 : 400,
                 fontFamily: "var(--font-syne)",

@@ -1,19 +1,23 @@
 """Global feature-importance helpers for linear text models."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from src.storage.model_registry import resolve_model_artifact_path
 from src.storage.models import ModelMeta
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 
 
 def load_linear_text_components(model_meta: ModelMeta) -> dict[str, Any]:
     """Load vectorizer, classifier, and ordered coefficient rows for a text model."""
-    model_path = Path(model_meta.storage_path) / "model.joblib"
+    if model_meta.model_type == MODEL_TYPE_XLM_ROBERTA:
+        raise ValueError("Feature importance is not supported for xlm_roberta models.")
+
+    model_path = resolve_model_artifact_path(model_meta.storage_path)
     if model_meta.model_type == "tfidf":
         clf = TfidfClassifier.load(model_path)
     elif model_meta.model_type == "char_ngram":

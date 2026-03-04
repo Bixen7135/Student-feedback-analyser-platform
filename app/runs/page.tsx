@@ -1,9 +1,12 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchRuns, deleteRun, RunSummary } from "@/app/lib/api";
 import { StageProgress } from "@/app/components/StageProgress";
+import { useI18n } from "@/app/lib/i18n/provider";
+import { formatLocalizedDateTime, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
 function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
@@ -19,15 +22,17 @@ function overallStatus(run: RunSummary): "completed" | "running" | "failed" | "p
 
 const STATUS_STYLE: Record<string, { color: string; bg: string; border: string; dot: string }> = {
   completed: { color: "var(--success)", bg: "var(--success-dim)", border: "var(--success)", dot: "var(--success)" },
-  running:   { color: "var(--running)", bg: "var(--running-dim)", border: "var(--running)", dot: "var(--running)" },
-  failed:    { color: "var(--error)",   bg: "var(--error-dim)",   border: "var(--error)",   dot: "var(--error)" },
-  partial:   { color: "var(--warning)", bg: "var(--warning-dim)", border: "var(--warning)", dot: "var(--warning)" },
+  running: { color: "var(--running)", bg: "var(--running-dim)", border: "var(--running)", dot: "var(--running)" },
+  failed: { color: "var(--error)", bg: "var(--error-dim)", border: "var(--error)", dot: "var(--error)" },
+  partial: { color: "var(--warning)", bg: "var(--warning-dim)", border: "var(--warning)", dot: "var(--warning)" },
 };
 
 const PER_PAGE = 20;
 
 export default function RunHistoryPage() {
   const router = useRouter();
+  const { t } = useI18n();
+  const dateTimeLocale = useDateTimeLocale();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,10 +52,11 @@ export default function RunHistoryPage() {
         if (!active) return;
         setRuns(data);
         setLoading(false);
-        // Keep polling while any run is actively running
+
         const anyRunning = data.some((r) =>
-          Object.values(r.stages).some((s) => s.status === "running")
+          Object.values(r.stages).some((s) => s.status === "running"),
         );
+
         if (anyRunning) {
           timeout = setTimeout(poll, 3000);
         }
@@ -78,17 +84,20 @@ export default function RunHistoryPage() {
   async function handleDelete(runId: string) {
     setDeletingId(runId);
     setDeleteError(null);
+
     try {
       await deleteRun(runId);
       const nextRuns = runs.filter((r) => r.run_id !== runId);
       const nextTotalPages = Math.max(1, Math.ceil(nextRuns.length / PER_PAGE));
       setRuns(nextRuns);
+
       if (page > nextTotalPages) {
         setPage(nextTotalPages);
       }
+
       setConfirmingId(null);
     } catch (e: unknown) {
-      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+      setDeleteError(e instanceof Error ? e.message : t("Delete failed"));
     } finally {
       setDeletingId(null);
     }
@@ -102,8 +111,6 @@ export default function RunHistoryPage() {
 
   return (
     <div className="page-shell page-standard page-shell--md animate-fade-up">
-
-      {/* ── Header ──────────────────────────────────────── */}
       <div className="flex items-center justify-between" style={{ marginBottom: "28px" }}>
         <div>
           <div
@@ -117,7 +124,7 @@ export default function RunHistoryPage() {
               marginBottom: "6px",
             }}
           >
-            Analysis
+            {t("Analysis")}
           </div>
           <h1
             style={{
@@ -128,7 +135,7 @@ export default function RunHistoryPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            Run History
+            {t("Run History")}
             {!loading && !error && (
               <span
                 style={{
@@ -139,11 +146,12 @@ export default function RunHistoryPage() {
                   marginLeft: "10px",
                 }}
               >
-                {total} total
+                {t(`${total} total`)}
               </span>
             )}
           </h1>
         </div>
+
         <div className="runs-page__header-actions">
           <Link
             href="/models"
@@ -158,8 +166,9 @@ export default function RunHistoryPage() {
               <path d="M6 1L10.5 3.5V8.5L6 11L1.5 8.5V3.5L6 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
               <path d="M6 6L10.5 3.5M6 6L1.5 3.5M6 6V11" stroke="currentColor" strokeWidth="1.2" />
             </svg>
-            Models
+            {t("Models")}
           </Link>
+
           <Link
             href="/runs/new"
             className="runs-page__header-action runs-page__header-action--primary"
@@ -172,12 +181,11 @@ export default function RunHistoryPage() {
               <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" />
               <path d="M6 3.5V8.5M3.5 6H8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
-            Run Pipeline
+            {t("Run Pipeline")}
           </Link>
         </div>
       </div>
 
-      {/* ── States ──────────────────────────────────────── */}
       {loading && (
         <div
           style={{
@@ -187,7 +195,7 @@ export default function RunHistoryPage() {
             padding: "48px 0",
           }}
         >
-          Loading runs…
+          {t("Loading runs...")}
         </div>
       )}
 
@@ -203,7 +211,7 @@ export default function RunHistoryPage() {
             fontFamily: "var(--font-jetbrains)",
           }}
         >
-          Failed to load runs: {error}. Ensure the API server is running on port 8000.
+          {t("Failed to load runs")}: {error}. {t("Ensure the API server is running on port 8000.")}
         </div>
       )}
 
@@ -242,15 +250,14 @@ export default function RunHistoryPage() {
               marginBottom: "8px",
             }}
           >
-            No runs yet
+            {t("No runs yet")}
           </div>
           <div style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
-            Launch your first run to get started.
+            {t("Launch your first run to get started.")}
           </div>
         </div>
       )}
 
-      {/* ── Run cards ───────────────────────────────────── */}
       <div className="flex flex-col gap-3">
         {pagedRuns.map((run) => {
           const status = overallStatus(run);
@@ -274,9 +281,7 @@ export default function RunHistoryPage() {
               }}
               onClick={() => router.push(`/runs/${run.run_id}`)}
             >
-              {/* Top row — id+badge on left, timestamp+delete on right */}
               <div className="flex items-center justify-between" style={{ marginBottom: "10px" }}>
-                {/* Left */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <span
                     style={{
@@ -302,11 +307,10 @@ export default function RunHistoryPage() {
                       className={`rounded-full shrink-0 ${status === "running" ? "animate-pulse-dot" : ""}`}
                       style={{ width: "5px", height: "5px", background: ss.dot }}
                     />
-                    {status}
+                    {t(status)}
                   </span>
                 </div>
 
-                {/* Right — timestamp + delete control side by side */}
                 <div
                   className="flex items-center"
                   style={{ gap: "10px", flexShrink: 0 }}
@@ -320,7 +324,7 @@ export default function RunHistoryPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {new Date(run.created_at).toLocaleString()}
+                    {formatLocalizedDateTime(run.created_at, dateTimeLocale)}
                   </span>
 
                   {isConfirming ? (
@@ -333,14 +337,14 @@ export default function RunHistoryPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        Delete?
+                        {t("Delete?")}
                       </span>
                       <button
                         onClick={() => setConfirmingId(null)}
                         style={{
                           background: "transparent",
                           border: "1px solid var(--border-dim)",
-                          borderRadius: "4px",
+                          borderRadius: "var(--radius-unified)",
                           color: "var(--text-tertiary)",
                           fontFamily: "var(--font-jetbrains)",
                           fontSize: "10px",
@@ -349,7 +353,7 @@ export default function RunHistoryPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        Cancel
+                        {t("Cancel")}
                       </button>
                       <button
                         onClick={() => handleDelete(run.run_id)}
@@ -357,7 +361,7 @@ export default function RunHistoryPage() {
                         style={{
                           background: "var(--error-dim)",
                           border: "1px solid var(--error)",
-                          borderRadius: "4px",
+                          borderRadius: "var(--radius-unified)",
                           color: "var(--error)",
                           fontFamily: "var(--font-jetbrains)",
                           fontSize: "10px",
@@ -367,13 +371,15 @@ export default function RunHistoryPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {isDeleting ? "…" : "Confirm"}
+                        {isDeleting ? "..." : t("Confirm")}
                       </button>
                     </div>
                   ) : (
                     <button
-                      onClick={() => { if (!isRunning) setConfirmingId(run.run_id); }}
-                      title={isRunning ? "Cannot delete a running run" : "Delete run"}
+                      onClick={() => {
+                        if (!isRunning) setConfirmingId(run.run_id);
+                      }}
+                      title={isRunning ? t("Cannot delete a running run") : t("Delete run")}
                       disabled={isRunning}
                       style={{
                         background: "transparent",
@@ -384,14 +390,18 @@ export default function RunHistoryPage() {
                         color: "var(--text-tertiary)",
                         display: "flex",
                         alignItems: "center",
-                        borderRadius: "4px",
+                        borderRadius: "var(--radius-unified)",
                         transition: "opacity 0.15s",
                         flexShrink: 0,
                       }}
-                      onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = "1"; }}
-                      onMouseLeave={(e) => { if (!isRunning) e.currentTarget.style.opacity = "0.4"; }}
+                      onMouseEnter={(e) => {
+                        if (!isRunning) e.currentTarget.style.opacity = "1";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isRunning) e.currentTarget.style.opacity = "0.4";
+                      }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Delete run">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label={t("Delete run")}>
                         <path
                           d="M2.5 3.5H11.5M5.5 3.5V2.5H8.5V3.5M6 6V10M8 6V10M3.5 3.5L4 11.5H10L10.5 3.5"
                           stroke="currentColor"
@@ -405,7 +415,6 @@ export default function RunHistoryPage() {
                 </div>
               </div>
 
-              {/* Meta */}
               <div
                 className="runs-page__run-meta"
                 style={{
@@ -415,8 +424,8 @@ export default function RunHistoryPage() {
                   marginBottom: "12px",
                 }}
               >
-                <span>seed:{run.random_seed}</span>
-                <span>cfg:{run.config_hash.slice(0, 8)}</span>
+                <span>{t("Seed")}: {run.random_seed}</span>
+                <span>{t("Config Hash")}: {run.config_hash.slice(0, 8)}</span>
                 {run.produced_models_count > 0 && (
                   <Link
                     href={`/models?run_id=${encodeURIComponent(run.run_id)}&include_archived=true`}
@@ -427,8 +436,13 @@ export default function RunHistoryPage() {
                       borderBottom: "1px solid var(--gold-muted)",
                     }}
                   >
-                    {run.produced_models_count}{" "}
-                    {pluralize(run.produced_models_count, "model", "models")}
+                    {t(
+                      `${run.produced_models_count} ${pluralize(
+                        run.produced_models_count,
+                        "model",
+                        "models",
+                      )}`,
+                    )}
                   </Link>
                 )}
                 <button
@@ -436,7 +450,7 @@ export default function RunHistoryPage() {
                   className={`runs-page__stage-toggle${isStagesExpanded ? " is-open" : ""}`}
                   aria-expanded={isStagesExpanded}
                   aria-controls={stagePanelId}
-                  aria-label={isStagesExpanded ? "Hide stage timings" : "Show stage timings"}
+                  aria-label={isStagesExpanded ? t("Hide stage timings") : t("Show stage timings")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setExpandedStageRuns((prev) => ({
@@ -457,7 +471,6 @@ export default function RunHistoryPage() {
                 </button>
               </div>
 
-              {/* Stages */}
               <div
                 id={stagePanelId}
                 className={`runs-page__stage-panel${isStagesExpanded ? " is-open" : ""}`}
@@ -482,7 +495,7 @@ export default function RunHistoryPage() {
               color: "var(--text-tertiary)",
             }}
           >
-            Showing {rangeStart}-{rangeEnd} of {total}
+            {t("Showing")} {rangeStart}-{rangeEnd} {t("of")} {total}
           </div>
           <div className="runs-page__pagination-controls">
             <button
@@ -491,7 +504,7 @@ export default function RunHistoryPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
@@ -500,7 +513,7 @@ export default function RunHistoryPage() {
                 opacity: page <= 1 ? 0.5 : 1,
               }}
             >
-              Prev
+              {t("Prev")}
             </button>
             <span
               style={{
@@ -511,7 +524,7 @@ export default function RunHistoryPage() {
                 textAlign: "center",
               }}
             >
-              Page {page} / {totalPages}
+              {t(`Page ${page} of ${totalPages}`)}
             </span>
             <button
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
@@ -519,7 +532,7 @@ export default function RunHistoryPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
@@ -528,7 +541,7 @@ export default function RunHistoryPage() {
                 opacity: page >= totalPages ? 0.5 : 1,
               }}
             >
-              Next
+              {t("Next")}
             </button>
           </div>
         </div>
@@ -536,4 +549,3 @@ export default function RunHistoryPage() {
     </div>
   );
 }
-

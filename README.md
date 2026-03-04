@@ -27,6 +27,16 @@ uv sync
 
 This creates `.venv/` and installs all Python dependencies (pandas, scikit-learn, semopy, fastapi, etc.).
 
+Optional transformer mode (`xlm_roberta`) requires the extra dependencies:
+
+```bash
+cd backend
+uv sync --extra transformers
+```
+
+If you install the backend package with `pip`, use `pip install "sfap-backend[transformers]"`.
+See [docs/transformer-mode.md](docs/transformer-mode.md) for operating notes and sizing guidance.
+
 ### 2. Frontend
 
 ```bash
@@ -93,7 +103,20 @@ cd backend
 uv run pytest ../tests/backend/ -v
 ```
 
-65 tests covering preprocessing, ingestion, splits, run management, psychometrics, text classifiers, evaluation, contradiction detection, and API endpoints.
+Backend tests cover preprocessing, ingestion, splits, run management, psychometrics, text classifiers, registry and inference compatibility, analytics, and API endpoints.
+
+Optional transformer runtime tests are skipped automatically when `torch` and `transformers` are not installed.
+
+---
+
+## Transformer Resource Notes
+
+- Baseline models (`tfidf`, `char_ngram`) remain lightweight and are the default for quick validation.
+- `xlm_roberta` is substantially heavier and is best run with the transformer extra installed on a machine with GPU support.
+- CPU-only runs are valid for smoke tests; start with `batch_size=4` to `8` and `epochs=1`.
+- For GPUs, `batch_size=8` to `16` is a safe starting point depending on VRAM.
+
+Detailed recommendations live in [docs/transformer-mode.md](docs/transformer-mode.md).
 
 ---
 

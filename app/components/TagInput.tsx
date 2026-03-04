@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 interface TagInputProps {
   tags: string[];
@@ -13,6 +14,7 @@ export function TagInput({
   onChange,
   placeholder = "Add tag...",
 }: TagInputProps) {
+  const { t } = useI18n();
   const [input, setInput] = useState("");
   const ref = useRef<HTMLInputElement>(null);
 
@@ -35,6 +37,7 @@ export function TagInput({
           {tag}
           <button
             type="button"
+            aria-label={t("Remove tag")}
             onClick={(event) => {
               event.stopPropagation();
               remove(tag);
@@ -59,7 +62,7 @@ export function TagInput({
           }
         }}
         onBlur={add}
-        placeholder={tags.length === 0 ? placeholder : ""}
+        placeholder={tags.length === 0 ? t(placeholder) : ""}
         className="ui-tag-input__field"
       />
     </div>

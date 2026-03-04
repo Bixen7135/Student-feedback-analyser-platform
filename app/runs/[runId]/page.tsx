@@ -5,6 +5,11 @@ import Link from "next/link";
 import { fetchRunDetail, RunDetail } from "@/app/lib/api";
 import { StageProgress } from "@/app/components/StageProgress";
 import { Disclaimer } from "@/app/components/Disclaimer";
+import {
+  formatLocalizedDate,
+  formatLocalizedDateTime,
+  useDateTimeLocale,
+} from "@/app/lib/i18n/date-time";
 
 // ---------------------------------------------------------------------------
 // Stage metadata
@@ -132,6 +137,7 @@ const MetaRow = ({ label, value }: { label: string; value: React.ReactNode }) =>
 
 export default function RunDetailPage({ params }: Props) {
   const { runId } = use(params);
+  const dateTimeLocale = useDateTimeLocale();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -255,7 +261,7 @@ export default function RunDetailPage({ params }: Props) {
           Metadata
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-          <MetaRow label="Created"       value={new Date(run.created_at).toLocaleString()} />
+          <MetaRow label="Created"       value={formatLocalizedDateTime(run.created_at, dateTimeLocale)} />
           <MetaRow label="Random Seed"   value={String(run.random_seed)} />
           <MetaRow label="Config Hash"   value={run.config_hash} />
           <MetaRow label="Data Snapshot" value={run.data_snapshot_id} />
@@ -327,7 +333,7 @@ export default function RunDetailPage({ params }: Props) {
                       {model.status}
                     </span>
                     <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
-                      {new Date(model.created_at).toLocaleDateString()}
+                      {formatLocalizedDate(model.created_at, dateTimeLocale)}
                     </span>
                   </div>
                 </Link>

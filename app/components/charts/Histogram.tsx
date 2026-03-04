@@ -111,7 +111,7 @@ export function Histogram({
                       display: "block",
                       width: "100%",
                       height,
-                      borderRadius: "8px 8px 2px 2px",
+                      borderRadius: "var(--radius-unified) var(--radius-unified) 2px 2px",
                       background: isPreview || isActive ? "var(--gold)" : "rgba(201,155,64,0.55)",
                       border: "1px solid rgba(201,155,64,0.25)",
                     }}

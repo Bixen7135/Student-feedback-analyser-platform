@@ -28,6 +28,7 @@ def generate_model_card(
     cards_dir.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now(timezone.utc).isoformat()
+    framework = "PyTorch + Transformers" if model_type == "xlm_roberta" else "scikit-learn"
 
     lines = [
         f"# Model Card: {task.replace('_', ' ').title()} — {model_type}",
@@ -41,7 +42,7 @@ def generate_model_card(
         f"",
         f"- **Task:** {task}",
         f"- **Model Type:** {model_type}",
-        f"- **Framework:** scikit-learn",
+        f"- **Framework:** {framework}",
         f"",
         f"### Hyperparameters",
         f"",

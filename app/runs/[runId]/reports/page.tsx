@@ -118,7 +118,7 @@ export default function ReportsPage({ params }: Props) {
                     background: downloading === artifact.name ? "var(--bg-overlay)" : "var(--gold-faint)",
                     border: `1px solid ${downloading === artifact.name ? "var(--border)" : "var(--gold-muted)"}`,
                     color: downloading === artifact.name ? "var(--text-tertiary)" : "var(--gold)",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-unified)",
                     padding: "6px 14px",
                     fontSize: "12px",
                     fontFamily: "var(--font-syne)",

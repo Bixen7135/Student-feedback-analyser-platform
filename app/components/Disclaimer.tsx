@@ -1,7 +1,13 @@
+"use client";
+
+import { useI18n } from "@/app/lib/i18n/provider";
+
 export function Disclaimer() {
+  const { t } = useI18n();
+
   return (
     <div className="ui-disclaimer">
-      <div className="ui-disclaimer__eyebrow">Scope &amp; Limitations</div>
+      <div className="ui-disclaimer__eyebrow">{t("Scope & Limitations")}</div>
       <ul className="ui-disclaimer__list">
         {[
           "Aggregate reporting and quality monitoring only.",
@@ -11,7 +17,7 @@ export function Disclaimer() {
         ].map((text) => (
           <li key={text} className="ui-disclaimer__item">
             <span className="ui-disclaimer__bullet">&gt;</span>
-            {text}
+            {t(text)}
           </li>
         ))}
       </ul>

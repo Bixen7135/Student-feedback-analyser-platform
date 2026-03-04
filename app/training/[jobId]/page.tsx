@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchTrainingStatus, TrainingJob } from "@/app/lib/api";
+import { formatLocalizedDateTime, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
 const TASK_LABELS: Record<string, string> = {
   language: "Language Detection",
@@ -30,7 +31,7 @@ function StatusBadge({ status }: { status: string }) {
         background: s.bg,
         color: s.color,
         border: `1px solid ${s.color}`,
-        borderRadius: "4px",
+        borderRadius: "var(--radius-unified)",
         padding: "2px 8px",
         fontSize: "11px",
         fontFamily: "var(--font-jetbrains)",
@@ -164,6 +165,7 @@ function ConfusionMatrix({
 export default function TrainingJobPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const router = useRouter();
+  const dateTimeLocale = useDateTimeLocale();
   const [job, setJob] = useState<TrainingJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,7 +199,7 @@ export default function TrainingJobPage() {
   const card = {
     background: "var(--bg-surface)",
     border: "1px solid var(--border)",
-    borderRadius: "10px",
+    borderRadius: "var(--radius-unified)",
     padding: "24px",
     marginBottom: "16px",
   } as const;
@@ -219,7 +221,7 @@ export default function TrainingJobPage() {
           style={{
             background: "rgba(239,68,68,0.08)",
             border: "1px solid rgba(239,68,68,0.3)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             padding: "16px",
             fontSize: "13px",
             color: "var(--error,#ef4444)",
@@ -232,7 +234,7 @@ export default function TrainingJobPage() {
             marginTop: "16px",
             background: "transparent",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             padding: "8px 16px",
             cursor: "pointer",
             color: "var(--text-secondary)",
@@ -300,7 +302,7 @@ export default function TrainingJobPage() {
               color: "var(--text-secondary)",
               textDecoration: "none",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               padding: "6px 12px",
             }}
           >
@@ -313,7 +315,7 @@ export default function TrainingJobPage() {
             color: "var(--text-tertiary)",
             textDecoration: "none",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             padding: "6px 12px",
           }}
         >
@@ -355,7 +357,7 @@ export default function TrainingJobPage() {
           style={{
             background: "rgba(239,68,68,0.08)",
             border: "1px solid rgba(239,68,68,0.3)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             padding: "16px",
             fontSize: "13px",
             color: "var(--error,#ef4444)",
@@ -382,13 +384,13 @@ export default function TrainingJobPage() {
         {job.started_at && (
           <MetricRow
             label="Started"
-            value={new Date(job.started_at).toLocaleString()}
+            value={formatLocalizedDateTime(job.started_at, dateTimeLocale)}
           />
         )}
         {job.completed_at && (
           <MetricRow
             label="Completed"
-            value={new Date(job.completed_at).toLocaleString()}
+            value={formatLocalizedDateTime(job.completed_at, dateTimeLocale)}
           />
         )}
       </div>
@@ -432,7 +434,7 @@ export default function TrainingJobPage() {
                   style={{
                     background: "var(--gold)",
                     color: "#000",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-unified)",
                     padding: "8px 16px",
                     fontSize: "12px",
                     fontWeight: 600,

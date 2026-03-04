@@ -15,7 +15,7 @@ export function ChartCard({
     <section
       style={{
         padding: "clamp(16px, 2vw, 20px)",
-        borderRadius: "clamp(12px, 1.2vw, 14px)",
+        borderRadius: "var(--radius-unified)",
         border: "1px solid var(--border-dim)",
         background:
           "linear-gradient(180deg, rgba(201,155,64,0.05) 0%, rgba(255,255,255,0) 28%), var(--bg-surface)",

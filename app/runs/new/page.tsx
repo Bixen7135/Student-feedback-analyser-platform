@@ -8,13 +8,20 @@ import {
   fetchDatasets,
   fetchDatasetBranches,
   fetchDatasetVersions,
+  fetchTrainingContract,
   RunDetail,
   DatasetSummary,
   DatasetBranch,
   DatasetVersion,
+  TrainingContractResponse,
+  TrainingModelType,
+  TrainingActivation,
+  TrainingConfigRequest,
+  PipelineTrainingRequest,
 } from "@/app/lib/api";
 import { Disclaimer } from "@/app/components/Disclaimer";
 import { StageProgress } from "@/app/components/StageProgress";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 // ─── Stage constants ────────────────────────────────────────────────────────
 
@@ -55,6 +62,38 @@ const TERMINAL = new Set(["completed", "failed", "skipped"]);
 
 const STEP_LABELS = ["Select Dataset", "Configure", "Review & Launch"];
 
+const MODEL_LABELS: Record<TrainingModelType, string> = {
+  tfidf: "TF-IDF + Logistic Regression",
+  char_ngram: "Char N-gram + Logistic Regression",
+  xlm_roberta: "XLM-RoBERTa",
+};
+
+const FALLBACK_TRAINING_CONTRACT: TrainingContractResponse = {
+  model_types: ["tfidf", "char_ngram", "xlm_roberta"],
+  classification_loss: "cross_entropy",
+  parameters: [
+    { name: "loss", applies_to: "all", required: true, default: "cross_entropy" },
+    { name: "train_ratio", applies_to: "all", required: true, default: 0.8 },
+    { name: "val_ratio", applies_to: "all", required: true, default: 0.1 },
+    { name: "test_ratio", applies_to: "all", required: true, default: 0.1 },
+    { name: "class_balancing", applies_to: "all", required: true, default: "class_weight" },
+    { name: "max_features", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "C", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "max_iter", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "pretrained_model", applies_to: ["xlm_roberta"], required: true, default: "xlm-roberta-base" },
+    { name: "max_seq_length", applies_to: ["xlm_roberta"], required: true, default: 256 },
+    { name: "batch_size", applies_to: ["xlm_roberta"], required: true, default: 16 },
+    { name: "epochs", applies_to: ["xlm_roberta"], required: true, default: 3 },
+    { name: "learning_rate", applies_to: ["xlm_roberta"], required: true, default: 0.00002 },
+    { name: "weight_decay", applies_to: ["xlm_roberta"], required: true, default: 0.01 },
+    { name: "warmup_ratio", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "gradient_accumulation_steps", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "head_hidden_units", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "dropout", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "activation", applies_to: ["xlm_roberta"], required: false, default: null },
+  ],
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function stageEtaLabel(
@@ -68,12 +107,12 @@ function stageEtaLabel(
   if (status === "failed") return "failed";
   if (status === "skipped") return "skipped";
   if (status === "running") {
-    if (!startedAt) return "running…";
+    if (!startedAt) return "running...";
     const elapsed = Math.max(0, Math.floor((nowMs - new Date(startedAt).getTime()) / 1000));
     const est = STAGE_ESTIMATES[name] ?? 60;
     const remaining = est - elapsed;
-    if (remaining > 5) return `${elapsed}s · ~${remaining}s left`;
-    if (remaining > 0) return `${elapsed}s · almost done`;
+    if (remaining > 5) return `${elapsed}s - ~${remaining}s left`;
+    if (remaining > 0) return `${elapsed}s - almost done`;
     return `${elapsed}s elapsed`;
   }
   const est = STAGE_ESTIMATES[name];
@@ -109,6 +148,8 @@ const labelStyle: React.CSSProperties = {
 // ─── Step indicator ─────────────────────────────────────────────────────────
 
 function StepIndicator({ step }: { step: number }) {
+  const { t } = useI18n();
+
   return (
     <div className="flex flex-wrap items-center gap-y-3" style={{ marginBottom: "28px" }}>
       {STEP_LABELS.map((label, i) => (
@@ -141,7 +182,7 @@ function StepIndicator({ step }: { step: number }) {
                 fontWeight: i === step ? 600 : 400,
               }}
             >
-              {label}
+              {t(label)}
             </span>
           </div>
           {i < STEP_LABELS.length - 1 && (
@@ -194,7 +235,7 @@ function SelectDatasetStep({
     width: "100%",
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "7px 12px",
     fontFamily: "var(--font-jetbrains)",
     fontSize: "12px",
@@ -318,6 +359,45 @@ function ConfigureStep({
   setSeed,
   name,
   setName,
+  selectedModel,
+  setSelectedModel,
+  trainRatio,
+  setTrainRatio,
+  valRatio,
+  setValRatio,
+  testRatio,
+  setTestRatio,
+  classBalancing,
+  setClassBalancing,
+  baselineMaxFeatures,
+  setBaselineMaxFeatures,
+  baselineC,
+  setBaselineC,
+  baselineMaxIter,
+  setBaselineMaxIter,
+  pretrainedModel,
+  setPretrainedModel,
+  maxSeqLength,
+  setMaxSeqLength,
+  batchSize,
+  setBatchSize,
+  epochs,
+  setEpochs,
+  learningRate,
+  setLearningRate,
+  weightDecay,
+  setWeightDecay,
+  warmupRatio,
+  setWarmupRatio,
+  gradientAccumulationSteps,
+  setGradientAccumulationSteps,
+  headHiddenUnits,
+  setHeadHiddenUnits,
+  dropout,
+  setDropout,
+  activation,
+  setActivation,
+  contractError,
   onBack,
   onNext,
 }: {
@@ -325,13 +405,52 @@ function ConfigureStep({
   setSeed: (v: number) => void;
   name: string;
   setName: (v: string) => void;
+  selectedModel: TrainingModelType;
+  setSelectedModel: (v: TrainingModelType) => void;
+  trainRatio: string;
+  setTrainRatio: (v: string) => void;
+  valRatio: string;
+  setValRatio: (v: string) => void;
+  testRatio: string;
+  setTestRatio: (v: string) => void;
+  classBalancing: "none" | "oversample" | "class_weight";
+  setClassBalancing: (v: "none" | "oversample" | "class_weight") => void;
+  baselineMaxFeatures: string;
+  setBaselineMaxFeatures: (v: string) => void;
+  baselineC: string;
+  setBaselineC: (v: string) => void;
+  baselineMaxIter: string;
+  setBaselineMaxIter: (v: string) => void;
+  pretrainedModel: string;
+  setPretrainedModel: (v: string) => void;
+  maxSeqLength: string;
+  setMaxSeqLength: (v: string) => void;
+  batchSize: string;
+  setBatchSize: (v: string) => void;
+  epochs: string;
+  setEpochs: (v: string) => void;
+  learningRate: string;
+  setLearningRate: (v: string) => void;
+  weightDecay: string;
+  setWeightDecay: (v: string) => void;
+  warmupRatio: string;
+  setWarmupRatio: (v: string) => void;
+  gradientAccumulationSteps: string;
+  setGradientAccumulationSteps: (v: string) => void;
+  headHiddenUnits: string;
+  setHeadHiddenUnits: (v: string) => void;
+  dropout: string;
+  setDropout: (v: string) => void;
+  activation: TrainingActivation | "";
+  setActivation: (v: TrainingActivation | "") => void;
+  contractError: string | null;
   onBack: () => void;
   onNext: () => void;
 }) {
   const inputStyle: React.CSSProperties = {
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "7px 12px",
     fontFamily: "var(--font-jetbrains)",
     fontSize: "13px",
@@ -358,7 +477,7 @@ function ConfigureStep({
         </div>
 
         {/* Seed */}
-        <div>
+        <div style={{ marginBottom: "20px" }}>
           <label style={labelStyle}>Random Seed</label>
           <input
             type="number"
@@ -370,7 +489,157 @@ function ConfigureStep({
             Fixed seed ensures reproducibility across runs.
           </div>
         </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <label style={labelStyle}>Text Model</label>
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value as TrainingModelType)}
+            style={{ ...inputStyle, width: "100%" }}
+          >
+            <option value="tfidf">{MODEL_LABELS.tfidf}</option>
+            <option value="char_ngram">{MODEL_LABELS.char_ngram}</option>
+            <option value="xlm_roberta">{MODEL_LABELS.xlm_roberta}</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <label style={labelStyle}>Split Ratios</label>
+          <div className="grid gap-3 md:grid-cols-3">
+            <input
+              type="number"
+              step="0.01"
+              value={trainRatio}
+              onChange={(e) => setTrainRatio(e.target.value)}
+              placeholder="Train"
+              style={{ ...inputStyle, width: "100%" }}
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={valRatio}
+              onChange={(e) => setValRatio(e.target.value)}
+              placeholder="Validation"
+              style={{ ...inputStyle, width: "100%" }}
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={testRatio}
+              onChange={(e) => setTestRatio(e.target.value)}
+              placeholder="Test"
+              style={{ ...inputStyle, width: "100%" }}
+            />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <label style={labelStyle}>Class Balancing</label>
+          <select
+            value={classBalancing}
+            onChange={(e) => setClassBalancing(e.target.value as "none" | "oversample" | "class_weight")}
+            style={{ ...inputStyle, width: "100%" }}
+          >
+            <option value="class_weight">Balanced class weights</option>
+            <option value="oversample">Random oversampling</option>
+            <option value="none">No balancing</option>
+          </select>
+        </div>
+
+        {selectedModel === "xlm_roberta" ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label style={labelStyle}>Pretrained Model</label>
+              <input
+                type="text"
+                value={pretrainedModel}
+                onChange={(e) => setPretrainedModel(e.target.value)}
+                style={{ ...inputStyle, width: "100%" }}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Max Sequence Length</label>
+              <input type="number" value={maxSeqLength} onChange={(e) => setMaxSeqLength(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Batch Size</label>
+              <input type="number" value={batchSize} onChange={(e) => setBatchSize(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Epochs</label>
+              <input type="number" value={epochs} onChange={(e) => setEpochs(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Learning Rate</label>
+              <input type="number" step="0.000001" value={learningRate} onChange={(e) => setLearningRate(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Weight Decay</label>
+              <input type="number" step="0.001" value={weightDecay} onChange={(e) => setWeightDecay(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Warmup Ratio</label>
+              <input type="number" step="0.01" value={warmupRatio} onChange={(e) => setWarmupRatio(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Gradient Accumulation</label>
+              <input type="number" value={gradientAccumulationSteps} onChange={(e) => setGradientAccumulationSteps(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Head Hidden Units</label>
+              <input type="number" value={headHiddenUnits} onChange={(e) => setHeadHiddenUnits(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Dropout</label>
+              <input type="number" step="0.01" value={dropout} onChange={(e) => setDropout(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div className="md:col-span-2">
+              <label style={labelStyle}>Activation</label>
+              <select
+                value={activation}
+                onChange={(e) => setActivation(e.target.value as TrainingActivation | "")}
+                style={{ ...inputStyle, width: "100%" }}
+              >
+                <option value="">Default</option>
+                <option value="relu">ReLU</option>
+                <option value="gelu">GELU</option>
+                <option value="tanh">Tanh</option>
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label style={labelStyle}>Max Features</label>
+              <input type="number" value={baselineMaxFeatures} onChange={(e) => setBaselineMaxFeatures(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Regularization (C)</label>
+              <input type="number" step="0.1" value={baselineC} onChange={(e) => setBaselineC(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Max Iterations</label>
+              <input type="number" value={baselineMaxIter} onChange={(e) => setBaselineMaxIter(e.target.value)} style={{ ...inputStyle, width: "100%" }} />
+            </div>
+          </div>
+        )}
       </div>
+
+      {contractError && (
+        <div
+          className="rounded-lg"
+          style={{
+            background: "rgba(245, 158, 11, 0.12)",
+            border: "1px solid rgba(245, 158, 11, 0.45)",
+            padding: "12px 16px",
+            color: "var(--gold)",
+            fontSize: "12px",
+            fontFamily: "var(--font-jetbrains)",
+          }}
+        >
+          Training contract unavailable. Using local fallback defaults. {contractError}
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button
@@ -433,6 +702,8 @@ function ReviewStep({
   selectedVersion,
   seed,
   name,
+  selectedModel,
+  pipelineConfigSummary,
   loading,
   error,
   onBack,
@@ -444,6 +715,8 @@ function ReviewStep({
   selectedVersion: number | null;
   seed: number;
   name: string;
+  selectedModel: TrainingModelType;
+  pipelineConfigSummary: Array<[string, string]>;
   loading: boolean;
   error: string | null;
   onBack: () => void;
@@ -493,6 +766,12 @@ function ReviewStep({
               </>
             )}
             <div style={rowStyle}>
+              <span style={{ color: "var(--text-tertiary)", fontFamily: "var(--font-syne)" }}>Text model</span>
+              <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)" }}>
+                {MODEL_LABELS[selectedModel]}
+              </span>
+            </div>
+            <div style={rowStyle}>
               <span style={{ color: "var(--text-tertiary)", fontFamily: "var(--font-syne)" }}>Name</span>
               <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)" }}>
                 {name || "(auto-generated)"}
@@ -502,6 +781,27 @@ function ReviewStep({
               <span style={{ color: "var(--text-tertiary)", fontFamily: "var(--font-syne)" }}>Seed</span>
               <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)" }}>{seed}</span>
             </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <div style={labelStyle as React.CSSProperties}>Text Model Config</div>
+          <div>
+            {pipelineConfigSummary.map(([label, value], index) => (
+              <div
+                key={label}
+                style={{
+                  ...rowStyle,
+                  borderBottom:
+                    index < pipelineConfigSummary.length - 1
+                      ? "1px solid var(--border-dim)"
+                      : "none",
+                }}
+              >
+                <span style={{ color: "var(--text-tertiary)", fontFamily: "var(--font-syne)" }}>{label}</span>
+                <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)" }}>{value}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -713,6 +1013,31 @@ export default function NewRunPage() {
   // Config
   const [seed, setSeed] = useState(42);
   const [name, setName] = useState("");
+  const [selectedModel, setSelectedModel] = useState<TrainingModelType>("tfidf");
+  const [trainRatio, setTrainRatio] = useState("0.80");
+  const [valRatio, setValRatio] = useState("0.10");
+  const [testRatio, setTestRatio] = useState("0.10");
+  const [classBalancing, setClassBalancing] = useState<"none" | "oversample" | "class_weight">("class_weight");
+  const [trainingContract, setTrainingContract] = useState<TrainingContractResponse>(
+    FALLBACK_TRAINING_CONTRACT
+  );
+  const [contractError, setContractError] = useState<string | null>(null);
+
+  const [baselineMaxFeatures, setBaselineMaxFeatures] = useState("");
+  const [baselineC, setBaselineC] = useState("");
+  const [baselineMaxIter, setBaselineMaxIter] = useState("");
+
+  const [pretrainedModel, setPretrainedModel] = useState("xlm-roberta-base");
+  const [maxSeqLength, setMaxSeqLength] = useState("256");
+  const [batchSize, setBatchSize] = useState("16");
+  const [epochs, setEpochs] = useState("3");
+  const [learningRate, setLearningRate] = useState("0.00002");
+  const [weightDecay, setWeightDecay] = useState("0.01");
+  const [warmupRatio, setWarmupRatio] = useState("");
+  const [gradientAccumulationSteps, setGradientAccumulationSteps] = useState("");
+  const [headHiddenUnits, setHeadHiddenUnits] = useState("");
+  const [dropout, setDropout] = useState("");
+  const [activation, setActivation] = useState<TrainingActivation | "">("");
 
   // Launch & run state
   const [phase, setPhase] = useState<"idle" | "launching" | "running" | "done">("idle");
@@ -723,6 +1048,80 @@ export default function NewRunPage() {
 
   const activeRef  = useRef(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function parseOptionalNumber(value: string, parser: (input: string) => number): number | undefined {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = parser(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  function formatSummaryValue(value: unknown): string {
+    if (value === null || value === undefined || value === "") return "(not set)";
+    return String(value);
+  }
+
+  function buildPipelineTrainingConfig(): PipelineTrainingRequest {
+    const config: TrainingConfigRequest = {
+      train_ratio: parseOptionalNumber(trainRatio, Number),
+      val_ratio: parseOptionalNumber(valRatio, Number),
+      test_ratio: parseOptionalNumber(testRatio, Number),
+      class_balancing: classBalancing,
+    };
+
+    if (selectedModel === "xlm_roberta") {
+      config.pretrained_model = pretrainedModel.trim() || undefined;
+      config.max_seq_length = parseOptionalNumber(maxSeqLength, (value) => parseInt(value, 10));
+      config.batch_size = parseOptionalNumber(batchSize, (value) => parseInt(value, 10));
+      config.epochs = parseOptionalNumber(epochs, (value) => parseInt(value, 10));
+      config.learning_rate = parseOptionalNumber(learningRate, Number);
+      config.weight_decay = parseOptionalNumber(weightDecay, Number);
+      config.warmup_ratio = parseOptionalNumber(warmupRatio, Number);
+      config.gradient_accumulation_steps = parseOptionalNumber(
+        gradientAccumulationSteps,
+        (value) => parseInt(value, 10),
+      );
+      config.head_hidden_units = parseOptionalNumber(headHiddenUnits, (value) => parseInt(value, 10));
+      config.dropout = parseOptionalNumber(dropout, Number);
+      config.activation = activation || undefined;
+    } else {
+      config.max_features = parseOptionalNumber(baselineMaxFeatures, (value) => parseInt(value, 10));
+      config.C = parseOptionalNumber(baselineC, Number);
+      config.max_iter = parseOptionalNumber(baselineMaxIter, (value) => parseInt(value, 10));
+    }
+
+    return {
+      model_type: selectedModel,
+      config,
+    };
+  }
+
+  const pipelineConfigSummary: Array<[string, string]> =
+    selectedModel === "xlm_roberta"
+      ? [
+          ["Loss", trainingContract.classification_loss],
+          ["Train / Val / Test", `${trainRatio} / ${valRatio} / ${testRatio}`],
+          ["Class balancing", classBalancing],
+          ["Pretrained model", formatSummaryValue(pretrainedModel.trim())],
+          ["Max sequence length", formatSummaryValue(parseOptionalNumber(maxSeqLength, (value) => parseInt(value, 10)))],
+          ["Batch size", formatSummaryValue(parseOptionalNumber(batchSize, (value) => parseInt(value, 10)))],
+          ["Epochs", formatSummaryValue(parseOptionalNumber(epochs, (value) => parseInt(value, 10)))],
+          ["Learning rate", formatSummaryValue(parseOptionalNumber(learningRate, Number))],
+          ["Weight decay", formatSummaryValue(parseOptionalNumber(weightDecay, Number))],
+          ["Warmup ratio", formatSummaryValue(parseOptionalNumber(warmupRatio, Number))],
+          ["Gradient accumulation", formatSummaryValue(parseOptionalNumber(gradientAccumulationSteps, (value) => parseInt(value, 10)))],
+          ["Head hidden units", formatSummaryValue(parseOptionalNumber(headHiddenUnits, (value) => parseInt(value, 10)))],
+          ["Dropout", formatSummaryValue(parseOptionalNumber(dropout, Number))],
+          ["Activation", formatSummaryValue(activation)],
+        ]
+      : [
+          ["Loss", trainingContract.classification_loss],
+          ["Train / Val / Test", `${trainRatio} / ${valRatio} / ${testRatio}`],
+          ["Class balancing", classBalancing],
+          ["Max features", formatSummaryValue(parseOptionalNumber(baselineMaxFeatures, (value) => parseInt(value, 10)))],
+          ["Regularization (C)", formatSummaryValue(parseOptionalNumber(baselineC, Number))],
+          ["Max iterations", formatSummaryValue(parseOptionalNumber(baselineMaxIter, (value) => parseInt(value, 10)))],
+        ];
 
   // Cleanup on unmount
   useEffect(() => {
@@ -743,6 +1142,17 @@ export default function NewRunPage() {
       .catch((e) => {
         setDatasetsError(e.message);
         setDatasetsLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchTrainingContract()
+      .then((contract) => {
+        setTrainingContract(contract);
+        setContractError(null);
+      })
+      .catch((e: unknown) => {
+        setContractError(e instanceof Error ? e.message : "Unable to load training contract.");
       });
   }, []);
 
@@ -800,6 +1210,7 @@ export default function NewRunPage() {
         branch_id: selectedBranch,
         dataset_version: selectedVersion,
         name: name || null,
+        pipeline_training: buildPipelineTrainingConfig(),
       });
       await startStage(created.run_id, "run_full");
       setRunId(created.run_id);
@@ -890,6 +1301,45 @@ export default function NewRunPage() {
           setSeed={setSeed}
           name={name}
           setName={setName}
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          trainRatio={trainRatio}
+          setTrainRatio={setTrainRatio}
+          valRatio={valRatio}
+          setValRatio={setValRatio}
+          testRatio={testRatio}
+          setTestRatio={setTestRatio}
+          classBalancing={classBalancing}
+          setClassBalancing={setClassBalancing}
+          baselineMaxFeatures={baselineMaxFeatures}
+          setBaselineMaxFeatures={setBaselineMaxFeatures}
+          baselineC={baselineC}
+          setBaselineC={setBaselineC}
+          baselineMaxIter={baselineMaxIter}
+          setBaselineMaxIter={setBaselineMaxIter}
+          pretrainedModel={pretrainedModel}
+          setPretrainedModel={setPretrainedModel}
+          maxSeqLength={maxSeqLength}
+          setMaxSeqLength={setMaxSeqLength}
+          batchSize={batchSize}
+          setBatchSize={setBatchSize}
+          epochs={epochs}
+          setEpochs={setEpochs}
+          learningRate={learningRate}
+          setLearningRate={setLearningRate}
+          weightDecay={weightDecay}
+          setWeightDecay={setWeightDecay}
+          warmupRatio={warmupRatio}
+          setWarmupRatio={setWarmupRatio}
+          gradientAccumulationSteps={gradientAccumulationSteps}
+          setGradientAccumulationSteps={setGradientAccumulationSteps}
+          headHiddenUnits={headHiddenUnits}
+          setHeadHiddenUnits={setHeadHiddenUnits}
+          dropout={dropout}
+          setDropout={setDropout}
+          activation={activation}
+          setActivation={setActivation}
+          contractError={contractError}
           onBack={() => setStep(0)}
           onNext={() => setStep(2)}
         />
@@ -903,6 +1353,8 @@ export default function NewRunPage() {
           selectedVersion={selectedVersion}
           seed={seed}
           name={name}
+          selectedModel={selectedModel}
+          pipelineConfigSummary={pipelineConfigSummary}
           loading={phase === "launching"}
           error={launchError}
           onBack={() => setStep(1)}

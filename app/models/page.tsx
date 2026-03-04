@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { fetchModels, deleteModel, ModelSummary } from "@/app/lib/api";
+import { formatLocalizedDate, useDateTimeLocale } from "@/app/lib/i18n/date-time";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 const TASK_COLORS: Record<string, string> = {
   language: "var(--teal)",
@@ -11,11 +13,58 @@ const TASK_COLORS: Record<string, string> = {
   detail_level: "var(--running)",
 };
 
+const TASK_LABELS: Record<string, string> = {
+  language: "Language",
+  sentiment: "Sentiment",
+  detail_level: "Detail Level",
+};
+
+const MODEL_TYPE_LABELS: Record<string, string> = {
+  tfidf: "TF-IDF",
+  char_ngram: "Char N-gram",
+  xlm_roberta: "XLM-RoBERTa",
+};
+
 const PER_PAGE = 20;
+
+function formatModelType(modelType: string): string {
+  return MODEL_TYPE_LABELS[modelType] ?? modelType;
+}
+
+function formatTaskLabel(task: string): string {
+  return TASK_LABELS[task] ?? task;
+}
+
+function renderConfigPreview(model: ModelSummary, t: (value: string) => string): string | null {
+  if (!model.config || Object.keys(model.config).length === 0) return null;
+  const config = model.config as Record<string, unknown>;
+
+  if (model.model_type === "xlm_roberta") {
+    const parts = [
+      typeof config.pretrained_model === "string" && config.pretrained_model
+        ? config.pretrained_model
+        : null,
+      config.max_seq_length != null ? `${t("Max sequence length")}: ${config.max_seq_length}` : null,
+      config.batch_size != null ? `${t("Batch size")}: ${config.batch_size}` : null,
+      config.epochs != null ? `${t("Epochs")}: ${config.epochs}` : null,
+      config.learning_rate != null ? `${t("Learning rate")}: ${config.learning_rate}` : null,
+    ].filter((part): part is string => Boolean(part));
+    return parts.length > 0 ? parts.join(" | ") : null;
+  }
+
+  const parts = [
+    config.max_features != null ? `${t("Max features")}: ${config.max_features}` : null,
+    config.C != null ? `C ${config.C}` : null,
+    config.max_iter != null ? `${t("Max iterations")}: ${config.max_iter}` : null,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
 
 export default function ModelsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const dateTimeLocale = useDateTimeLocale();
+  const { t } = useI18n();
   const lineageRunId = searchParams.get("run_id") ?? "";
   const includeArchived = searchParams.get("include_archived") === "true";
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -74,16 +123,16 @@ export default function ModelsPage() {
             borderBottom: "1px solid var(--gold-muted)",
           }}
         >
-          produced by pipeline run {model.run_id.slice(0, 20)}...
+          {`produced by pipeline run ${model.run_id.slice(0, 20)}...`}
         </Link>
       );
     }
 
     if (model.run_source === "training") {
-      return <span>produced by training job {model.run_id.slice(0, 20)}...</span>;
+      return <span>{`produced by training job ${model.run_id.slice(0, 20)}...`}</span>;
     }
 
-    return <span>linked run {model.run_id.slice(0, 20)}...</span>;
+    return <span>{`linked run ${model.run_id.slice(0, 20)}...`}</span>;
   }
 
   function renderSourceBadge(model: ModelSummary) {
@@ -145,7 +194,7 @@ export default function ModelsPage() {
   const selectStyle = {
     background: "var(--bg-surface)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "6px 10px",
     color: "var(--text-secondary)",
     fontSize: "11px",
@@ -216,7 +265,7 @@ export default function ModelsPage() {
                   marginLeft: "10px",
                 }}
               >
-                {total} total
+                {`${total} total`}
               </span>
             )}
           </h1>
@@ -269,9 +318,9 @@ export default function ModelsPage() {
           style={selectStyle}
         >
           <option value="">All tasks</option>
-          <option value="language">Language</option>
-          <option value="sentiment">Sentiment</option>
-          <option value="detail_level">Detail Level</option>
+          <option value="language">{TASK_LABELS.language}</option>
+          <option value="sentiment">{TASK_LABELS.sentiment}</option>
+          <option value="detail_level">{TASK_LABELS.detail_level}</option>
         </select>
         <select
           value={typeFilter}
@@ -281,6 +330,7 @@ export default function ModelsPage() {
           <option value="">All types</option>
           <option value="tfidf">TF-IDF</option>
           <option value="char_ngram">Char N-gram</option>
+          <option value="xlm_roberta">XLM-RoBERTa</option>
         </select>
       </div>
 
@@ -301,14 +351,14 @@ export default function ModelsPage() {
               fontFamily: "var(--font-jetbrains)",
             }}
           >
-            Showing {includeArchived ? "all" : "active"} models produced by run {lineageRunId}
+            {`Showing ${includeArchived ? "all" : "active"} models produced by run ${lineageRunId}`}
           </span>
           <button
             onClick={() => router.push("/models")}
             style={{
               background: "transparent",
               border: "1px solid var(--gold-muted)",
-              borderRadius: "4px",
+              borderRadius: "var(--radius-unified)",
               color: "var(--gold)",
               fontSize: "10px",
               fontFamily: "var(--font-jetbrains)",
@@ -388,6 +438,7 @@ export default function ModelsPage() {
           const macroF1 = m.metrics?.macro_f1 ?? m.metrics?.val_macro_f1;
           const isConfirming = confirmId === m.id;
           const isArchived = m.status !== "active";
+          const configPreview = renderConfigPreview(m, t);
 
           return (
             <div
@@ -428,7 +479,7 @@ export default function ModelsPage() {
                       fontFamily: "var(--font-jetbrains)",
                     }}
                   >
-                    {m.task}
+                    {formatTaskLabel(m.task)}
                   </span>
                   <span
                     className="rounded"
@@ -441,7 +492,7 @@ export default function ModelsPage() {
                       fontFamily: "var(--font-jetbrains)",
                     }}
                   >
-                    {m.model_type}
+                    {formatModelType(m.model_type)}
                   </span>
                   {renderSourceBadge(m)}
                   {isArchived && (
@@ -474,7 +525,7 @@ export default function ModelsPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {new Date(m.created_at).toLocaleDateString()}
+                    {formatLocalizedDate(m.created_at, dateTimeLocale)}
                   </span>
 
                   {isConfirming ? (
@@ -489,7 +540,7 @@ export default function ModelsPage() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {deleteWarning.dependencies?.analyses || 0} analyses linked
+                            {`${deleteWarning.dependencies?.analyses || 0} analyses linked`}
                           </span>
                         </>
                       ) : (
@@ -511,7 +562,7 @@ export default function ModelsPage() {
                             style={{
                               background: "transparent",
                               border: "1px solid var(--border-dim)",
-                              borderRadius: "4px",
+                              borderRadius: "var(--radius-unified)",
                               color: "var(--text-tertiary)",
                               fontFamily: "var(--font-jetbrains)",
                               fontSize: "10px",
@@ -527,7 +578,7 @@ export default function ModelsPage() {
                             style={{
                               background: "var(--error-dim)",
                               border: "1px solid var(--error)",
-                              borderRadius: "4px",
+                              borderRadius: "var(--radius-unified)",
                               color: "var(--error)",
                               fontFamily: "var(--font-jetbrains)",
                               fontSize: "10px",
@@ -554,7 +605,7 @@ export default function ModelsPage() {
                         color: "var(--text-tertiary)",
                         display: "flex",
                         alignItems: "center",
-                        borderRadius: "4px",
+                        borderRadius: "var(--radius-unified)",
                         transition: "opacity 0.15s",
                       }}
                       onMouseEnter={(e) => { if (!isArchived) e.currentTarget.style.opacity = "1"; }}
@@ -599,6 +650,19 @@ export default function ModelsPage() {
                 )}
                 {renderLineage(m)}
               </div>
+              {configPreview && (
+                <div
+                  style={{
+                    marginTop: "8px",
+                    fontFamily: "var(--font-jetbrains)",
+                    fontSize: "10px",
+                    color: "var(--text-tertiary)",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {configPreview}
+                </div>
+              )}
             </div>
           );
         })}
@@ -621,7 +685,7 @@ export default function ModelsPage() {
               color: "var(--text-tertiary)",
             }}
           >
-            Showing {rangeStart}-{rangeEnd} of {total}
+            {`Showing ${rangeStart}-${rangeEnd} of ${total}`}
           </div>
           <div className="flex items-center justify-center gap-2">
             <button
@@ -630,7 +694,7 @@ export default function ModelsPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
@@ -649,8 +713,8 @@ export default function ModelsPage() {
                 minWidth: "64px",
                 textAlign: "center",
               }}
-            >
-              Page {page} / {totalPages}
+              >
+              {`Page ${page} of ${totalPages}`}
             </span>
             <button
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
@@ -658,7 +722,7 @@ export default function ModelsPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",

@@ -82,6 +82,26 @@ def test_run_manager_stores_dataset_metadata(tmp_path):
     assert meta["name"] == "my test run"
 
 
+def test_run_manager_stores_pipeline_training_metadata(tmp_path):
+    """create_run persists the optional pipeline text-model config."""
+    from src.utils.run_manager import RunManager
+
+    mgr = RunManager(tmp_path / "runs")
+    run_id = mgr.create_run(
+        config_hash="abc12345",
+        data_snapshot_id="snap0001",
+        random_seed=7,
+        system_info={},
+        pipeline_training={
+            "model_type": "xlm_roberta",
+            "config": {"batch_size": 8, "epochs": 2},
+        },
+    )
+    meta = mgr.load_run(run_id)
+    assert meta["pipeline_training"]["model_type"] == "xlm_roberta"
+    assert meta["pipeline_training"]["config"]["batch_size"] == 8
+
+
 def test_run_manager_null_dataset_fields_by_default(tmp_path):
     """dataset_id / branch_id / dataset_version / name default to None."""
     from src.utils.run_manager import RunManager
@@ -383,3 +403,181 @@ def test_pipeline_phase3_registers_models_and_links_analysis(
     )
     assert ref_count is not None
     assert ref_count["cnt"] == 6
+
+
+def test_pipeline_uses_training_runner_for_configured_model_type(
+    monkeypatch,
+    tmp_path,
+    experiment_config_path,
+    factor_structure_path,
+):
+    """Configured pipeline text training uses run_training and mirrors a single model type."""
+    from types import SimpleNamespace
+
+    from src.pipeline import run_full_pipeline
+    from src.storage.database import Database
+    from src.storage.model_registry import ModelRegistry
+
+    df_raw = pd.DataFrame(
+        {
+            "text_feedback": [f"text {i}" for i in range(12)],
+            "language": ["ru", "kz", "mixed"] * 4,
+            "sentiment_class": ["positive", "neutral", "negative"] * 4,
+            "detail_level": ["short", "medium", "long"] * 4,
+        }
+    )
+
+    def _fake_apply_preprocess(
+        df: pd.DataFrame,
+        text_col: str = "text_feedback",
+        spec=None,
+    ) -> pd.DataFrame:
+        next_df = df.copy()
+        next_df["text_processed"] = next_df[text_col]
+        return next_df
+
+    def _fake_save_preprocessed(df: pd.DataFrame, run_dir: Path) -> Path:
+        out = run_dir / "stages" / "preprocessed.parquet"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(out, index=False)
+        return out
+
+    def _fake_run_psychometrics(df: pd.DataFrame, _fs: Path, run_dir: Path):
+        scores = pd.DataFrame({"F1": np.linspace(0.1, 0.9, len(df))}, index=df.index)
+        out = run_dir / "psychometrics" / "factor_scores.csv"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        scores.to_csv(out, index=False)
+        return SimpleNamespace(factor_scores=scores)
+
+    def _fake_split(df: pd.DataFrame, stratify_col: str, seed: int):
+        return (
+            df.iloc[:8].copy(),
+            df.iloc[8:10].copy(),
+            df.iloc[10:].copy(),
+        )
+
+    def _fake_validate(*args, **kwargs):
+        return None
+
+    def _should_not_train_baselines(*args, **kwargs):
+        raise AssertionError("train_all_baselines should not be used when pipeline_training is set")
+
+    calls: list[str] = []
+    db = Database(tmp_path / "phase8.db")
+    model_registry = ModelRegistry(db, tmp_path / "models")
+
+    def _fake_run_training(
+        dataset_id,
+        task,
+        model_type,
+        dataset_manager,
+        model_registry,
+        artifacts_dir,
+        config=None,
+        dataset_version=None,
+        branch_id=None,
+        seed=42,
+        name=None,
+        base_model_id=None,
+        job_id=None,
+        data_path=None,
+        producer_run_id=None,
+    ):
+        calls.append(task)
+        assert model_type == "xlm_roberta"
+        assert producer_run_id is not None
+        model_dir = artifacts_dir / f"training_{task}" / "model"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (model_dir / "config.json").write_text("{}", encoding="utf-8")
+        metrics = {
+            "task": task,
+            "model_type": model_type,
+            "classes": ["a", "b"],
+            "val": {"macro_f1": 0.9, "accuracy": 0.9},
+        }
+        model_meta = model_registry.register_model(
+            name=name or f"{task}_{model_type}",
+            task=task,
+            model_type=model_type,
+            source_model_path=model_dir,
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            config=config.to_dict(model_type=model_type) if config else {},
+            metrics=metrics,
+            run_id=producer_run_id,
+        )
+        return {
+            "run_id": f"training_{task}",
+            "model_id": model_meta.id,
+            "model_name": model_meta.name,
+            "model_version": model_meta.version,
+            "metrics": metrics,
+            "config": model_meta.config or {},
+        }
+
+    def _fake_run_fusion(*args, **kwargs):
+        return {"ok": True}
+
+    def _fake_run_contradiction(*args, **kwargs):
+        return {"ok": True}
+
+    def _fake_run_evaluation(df_test: pd.DataFrame, run_dir: Path, text_col: str = "text_feedback"):
+        for task in ["language", "sentiment", "detail_level"]:
+            assert (run_dir / "text_tasks" / task / "xlm_roberta" / "model").exists()
+            assert (run_dir / "text_tasks" / task / "xlm_roberta" / "metrics.json").exists()
+        eval_dir = run_dir / "evaluation"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        result = {"sentiment": {"xlm_roberta": {"overall": {"macro_f1": 0.9}}}}
+        (eval_dir / "classification_results.json").write_bytes(orjson.dumps(result))
+        return result
+
+    def _fake_generate_evaluation_report(run_dir: Path) -> Path:
+        out = run_dir / "reports" / "evaluation_report.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# Evaluation", encoding="utf-8")
+        return out
+
+    def _fake_generate_all_model_cards(run_dir: Path) -> list[Path]:
+        return []
+
+    def _fake_generate_data_dictionary(run_dir: Path) -> Path:
+        out = run_dir / "reports" / "data_dictionary.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# Data Dictionary", encoding="utf-8")
+        return out
+
+    monkeypatch.setattr("src.pipeline.apply_preprocess", _fake_apply_preprocess)
+    monkeypatch.setattr("src.pipeline.save_preprocessed", _fake_save_preprocessed)
+    monkeypatch.setattr("src.pipeline.run_psychometrics", _fake_run_psychometrics)
+    monkeypatch.setattr("src.pipeline.stratified_split", _fake_split)
+    monkeypatch.setattr("src.pipeline.validate_split_no_leakage", _fake_validate)
+    monkeypatch.setattr("src.pipeline.train_all_baselines", _should_not_train_baselines)
+    monkeypatch.setattr("src.pipeline.run_training", _fake_run_training)
+    monkeypatch.setattr("src.pipeline.run_fusion", _fake_run_fusion)
+    monkeypatch.setattr("src.pipeline.run_contradiction_monitoring", _fake_run_contradiction)
+    monkeypatch.setattr("src.pipeline.run_evaluation", _fake_run_evaluation)
+    monkeypatch.setattr("src.pipeline.generate_evaluation_report", _fake_generate_evaluation_report)
+    monkeypatch.setattr("src.pipeline.generate_all_model_cards", _fake_generate_all_model_cards)
+    monkeypatch.setattr("src.pipeline.generate_data_dictionary", _fake_generate_data_dictionary)
+
+    run_id = run_full_pipeline(
+        data_path=None,
+        config_path=experiment_config_path,
+        factor_structure_path=factor_structure_path,
+        runs_dir=tmp_path / "runs",
+        seed=42,
+        df_raw=df_raw,
+        dataset_id="ds_phase8",
+        dataset_version=1,
+        pipeline_training={
+            "model_type": "xlm_roberta",
+            "config": {"loss": "cross_entropy", "batch_size": 8, "epochs": 2},
+        },
+        model_registry=model_registry,
+        db=db,
+    )
+
+    assert calls == ["language", "sentiment", "detail_level"]
+    models, total = model_registry.list_models(run_id=run_id, per_page=100)
+    assert total == 3
+    assert all(model.model_type == "xlm_roberta" for model in models)

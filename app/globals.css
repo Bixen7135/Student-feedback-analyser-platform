@@ -9,14 +9,15 @@
 }
 
 :root {
+  --radius-unified: 0.75rem;
   --layout-gutter: clamp(1rem, 1rem + 1.25vw, 2.25rem);
   --layout-gutter-tight: clamp(0.875rem, 0.7rem + 0.9vw, 1.25rem);
   --layout-section-gap: clamp(1rem, 0.8rem + 1vw, 1.5rem);
-  --surface-radius: clamp(0.75rem, 0.65rem + 0.4vw, 1rem);
+  --surface-radius: var(--radius-unified);
   --surface-padding: clamp(1rem, 0.8rem + 0.9vw, 1.5rem);
   --measure-readable: 72rem;
   --panel-gap: clamp(0.875rem, 0.72rem + 0.7vw, 1.25rem);
-  --panel-radius-lg: clamp(0.95rem, 0.85rem + 0.45vw, 1.25rem);
+  --panel-radius-lg: var(--radius-unified);
   --control-height-sm: clamp(2rem, 1.86rem + 0.45vw, 2.3rem);
   --control-height-md: clamp(2.3rem, 2.08rem + 0.6vw, 2.8rem);
   --font-step--1: clamp(0.69rem, 0.67rem + 0.08vw, 0.78rem);
@@ -107,10 +108,11 @@ video {
   max-width: 100%;
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea,
 button {
+  border-radius: var(--radius-unified);
   color: inherit;
   font: inherit;
   max-width: 100%;
@@ -137,6 +139,10 @@ button {
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid rgba(212, 168, 75, 0.75);
   outline-offset: 2px;
+}
+
+:where(.rounded, .rounded-lg, .rounded-xl) {
+  border-radius: var(--radius-unified) !important;
 }
 
 /* Scrollbar */
@@ -225,7 +231,7 @@ button {
   height: 2.75rem;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: var(--radius-unified);
   background: linear-gradient(180deg, rgba(23, 23, 30, 0.98), rgba(15, 15, 21, 0.92));
   color: var(--text-primary);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
@@ -312,7 +318,7 @@ button {
   margin-left: -1px;
   padding: 0.5rem 0.625rem;
   border-left: 2px solid transparent;
-  border-radius: 0.625rem;
+  border-radius: var(--radius-unified);
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.35;
@@ -352,7 +358,7 @@ button {
   flex-shrink: 0;
   width: clamp(2rem, 1.84rem + 0.55vw, 2.4rem);
   height: clamp(2rem, 1.84rem + 0.55vw, 2.4rem);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   background: var(--gold-faint);
   border: 1px solid var(--gold-muted);
 }
@@ -500,15 +506,15 @@ button {
 }
 
 .page-standard :where(.rounded-xl) {
-  border-radius: var(--standard-card-radius);
+  border-radius: var(--radius-unified) !important;
 }
 
 .page-standard :where(.rounded-lg) {
-  border-radius: var(--surface-radius);
+  border-radius: var(--radius-unified) !important;
 }
 
 .page-standard :where(.rounded) {
-  border-radius: 0.625rem;
+  border-radius: var(--radius-unified) !important;
 }
 
 .page-standard :where(a, button) {
@@ -627,7 +633,7 @@ button {
   align-items: center;
   gap: 0.25rem;
   border: 1px solid var(--gold-muted);
-  border-radius: 0.55rem;
+  border-radius: var(--radius-unified);
   background: var(--gold-faint);
   padding: 0.125rem 0.4rem;
   font-family: var(--font-jetbrains);
@@ -727,7 +733,7 @@ button {
   gap: 0.5rem;
   min-width: 0;
   min-height: var(--control-height-sm);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   padding: 0.5rem 1rem;
   font-family: var(--font-syne);
   font-size: 0.75rem;
@@ -778,7 +784,7 @@ button {
   gap: 0.5rem;
   min-width: 0;
   min-height: var(--control-height-sm);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   padding: 0.5rem 1rem;
   font-family: var(--font-syne);
   font-size: 0.75rem;
@@ -835,7 +841,7 @@ button {
   min-height: 1.9rem;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 0.45rem;
+  border-radius: var(--radius-unified);
   background: rgba(23, 23, 30, 0.92);
   color: var(--text-secondary);
   font-family: var(--font-jetbrains);
@@ -878,7 +884,7 @@ button {
   justify-content: center;
   min-width: 0;
   min-height: var(--control-height-sm);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   padding: 0.5rem 1rem;
   font-family: var(--font-syne);
   font-size: 0.75rem;
@@ -928,7 +934,7 @@ button {
   justify-content: center;
   min-width: 0;
   min-height: var(--control-height-sm);
-  border-radius: 0.7rem;
+  border-radius: var(--radius-unified);
   padding: 0.45rem 0.75rem;
   font-family: var(--font-syne);
   font-size: 0.72rem;
@@ -976,7 +982,7 @@ button {
 .analyses-page__row-action--plain {
   min-height: auto;
   border: none;
-  border-radius: 0.45rem;
+  border-radius: var(--radius-unified);
   background: none;
   color: var(--text-tertiary);
   font-family: var(--font-jetbrains);
@@ -1045,7 +1051,7 @@ button {
   min-width: 0;
   min-height: var(--control-height-sm);
   padding: 0.5rem 0.95rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   font-family: var(--font-syne);
   font-size: 0.75rem;
   font-weight: 600;
@@ -1099,7 +1105,7 @@ button {
 .analysis-detail__action--plain {
   min-height: auto;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-unified);
   background: none;
   color: var(--text-tertiary);
   font-family: var(--font-jetbrains);
@@ -1181,7 +1187,7 @@ button {
   min-height: 2rem;
   padding: 0.3rem 0.55rem;
   border: 1px solid rgba(28, 28, 42, 0.72);
-  border-radius: 0.625rem;
+  border-radius: var(--radius-unified);
   background: rgba(15, 15, 21, 0.44);
 }
 
@@ -1197,7 +1203,7 @@ button {
   align-items: center;
   justify-content: center;
   min-height: var(--control-height-sm);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-unified);
   padding: 0.5rem 0.95rem;
 }
 
@@ -1287,7 +1293,7 @@ button {
   margin-left: auto;
   padding: 0 0.75rem;
   border: 1px solid var(--border-dim);
-  border-radius: 0.625rem;
+  border-radius: var(--radius-unified);
   background: rgba(15, 15, 21, 0.42);
 }
 
@@ -1346,7 +1352,7 @@ button {
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border-dim);
-  border-radius: 16px;
+  border-radius: var(--radius-unified);
   background:
     radial-gradient(120% 160% at 90% -20%, rgba(42, 191, 176, 0.18) 0%, rgba(42, 191, 176, 0) 48%),
     radial-gradient(120% 120% at -10% -40%, rgba(212, 168, 75, 0.18) 0%, rgba(212, 168, 75, 0) 56%),
@@ -1455,7 +1461,7 @@ button {
   align-items: center;
   justify-content: center;
   min-height: 39px;
-  border-radius: 10px;
+  border-radius: var(--radius-unified);
   padding: 0 16px;
   text-decoration: none;
   font-size: 13px;
@@ -1502,7 +1508,7 @@ button {
 }
 
 .db-stat-card {
-  border-radius: 12px;
+  border-radius: var(--radius-unified);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(23, 23, 30, 0.92), rgba(18, 18, 25, 0.92));
   padding: 12px;
@@ -1548,7 +1554,7 @@ button {
 
 .db-panel {
   border: 1px solid var(--border-dim);
-  border-radius: 16px;
+  border-radius: var(--radius-unified);
   background: var(--bg-surface);
   padding: clamp(16px, 2vw, 24px);
 }
@@ -1586,7 +1592,7 @@ button {
   gap: 8px;
   text-decoration: none;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-unified);
   padding: 12px;
   background: linear-gradient(180deg, rgba(23, 23, 30, 0.94), rgba(16, 16, 22, 0.94));
   transition:
@@ -1622,7 +1628,7 @@ button {
 .db-terminal {
   margin: 0;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-unified);
   padding: 14px;
   overflow-x: auto;
   background: radial-gradient(80% 130% at 100% 0%, rgba(42, 191, 176, 0.12), rgba(23, 23, 30, 1) 56%);
@@ -1664,7 +1670,7 @@ button {
   min-height: 100%;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: var(--radius-unified);
   background: linear-gradient(180deg, rgba(23, 23, 30, 0.96), rgba(16, 16, 22, 0.94));
   color: var(--text-secondary);
   cursor: pointer;
@@ -1700,7 +1706,7 @@ button {
   gap: clamp(0.875rem, 0.7rem + 0.55vw, 1.125rem);
   min-height: clamp(12rem, 11rem + 2vw, 13rem);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: var(--radius-unified);
   padding: clamp(1rem, 0.9rem + 0.6vw, 1.4rem);
   background:
     radial-gradient(110% 140% at 100% 0%, rgba(42, 191, 176, 0.1) 0%, rgba(42, 191, 176, 0) 54%),
@@ -1824,7 +1830,7 @@ button {
   display: grid;
   gap: 0.5rem;
   border: 1px solid rgba(42, 191, 176, 0.16);
-  border-radius: 0.9rem;
+  border-radius: var(--radius-unified);
   background: rgba(11, 18, 19, 0.62);
   padding: 0.875rem;
 }
@@ -1884,7 +1890,7 @@ button {
   margin-top: 0.25rem;
   padding: 0.625rem 0.75rem;
   border: 1px solid rgba(122, 94, 40, 0.45);
-  border-radius: 0.8rem;
+  border-radius: var(--radius-unified);
   background: rgba(212, 168, 75, 0.07);
   color: var(--text-primary);
   font-family: var(--font-syne);
@@ -1944,7 +1950,7 @@ button {
 .db-stage-detail-item {
   min-width: 0;
   border: 1px solid rgba(42, 191, 176, 0.14);
-  border-radius: 0.9rem;
+  border-radius: var(--radius-unified);
   background: rgba(11, 18, 19, 0.48);
   padding: 0.875rem;
 }
@@ -2024,7 +2030,7 @@ button {
   }
 
   .db-stage-nav {
-    border-radius: 0.85rem;
+    border-radius: var(--radius-unified);
   }
 
   .db-stage-spotlight-grid {
@@ -2041,9 +2047,12 @@ button {
   }
 
   .db-stage-pagination {
+    justify-content: flex-start;
+    width: 100%;
     flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 0.25rem;
+    margin-inline: 0;
   }
 
   .db-stage-pill {
@@ -2330,7 +2339,7 @@ button {
   .dataset-detail__tab {
     width: 100%;
     justify-content: center;
-    border-radius: 0.625rem !important;
+    border-radius: var(--radius-unified) !important;
     border-bottom: 1px solid var(--border) !important;
     padding: 0.5rem 0.75rem !important;
     text-align: center;
@@ -2501,7 +2510,7 @@ button {
   }
 
   .db-panel {
-    border-radius: 13px;
+    border-radius: var(--radius-unified);
   }
 
   .db-stat-grid {

@@ -5,28 +5,31 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 BACKEND_DIR = Path(__file__).parent.parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from src.inference.engine import check_compatibility
+from src.inference.engine import check_compatibility, run_inference
 from src.schema import resolve_roles
 from src.storage.models import ModelMeta
 
 
 def _make_model_meta(
     *,
+    model_type: str = "tfidf",
+    storage_path: str = "C:/tmp/model_test_compat",
     preprocess_spec_id: str = "preprocess_v1",
 ) -> ModelMeta:
     return ModelMeta(
         id="model_test_compat",
         name="Compatibility Test Model",
         task="sentiment",
-        model_type="tfidf",
+        model_type=model_type,
         version=1,
         created_at="2026-02-28T00:00:00+00:00",
-        storage_path="C:/tmp/model_test_compat",
+        storage_path=storage_path,
         input_signature={
             "task": "sentiment",
             "required_roles": ["text"],
@@ -108,3 +111,30 @@ def test_check_compatibility_fails_for_unsupported_preprocess_spec() -> None:
         reason["code"] == "unsupported_preprocess_spec"
         for reason in report["reasons"]
     )
+
+
+def test_run_inference_resolves_directory_artifacts_before_model_dispatch(tmp_path) -> None:
+    model_dir = tmp_path / "registered_model" / "v1" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "metadata.json").write_text(
+        (
+            '{"pretrained_model":"xlm-roberta-base","max_seq_length":64,'
+            '"batch_size":2,"epochs":1,"learning_rate":0.001,"weight_decay":0.0,'
+            '"dropout":0.1,"activation":"gelu","classes":["negative","positive"],'
+            '"label_to_id":{"negative":0,"positive":1}}'
+        ),
+        encoding="utf-8",
+    )
+
+    df = pd.DataFrame({"text_feedback": ["good", "bad"]})
+    resolved_columns = resolve_roles(df=df, column_roles={}, overrides={})
+
+    with pytest.raises(RuntimeError, match="sfap-backend\\[transformers\\]"):
+        run_inference(
+            df=df,
+            model_meta=_make_model_meta(
+                model_type="xlm_roberta",
+                storage_path=str(model_dir.parent),
+            ),
+            resolved_columns=resolved_columns,
+        )

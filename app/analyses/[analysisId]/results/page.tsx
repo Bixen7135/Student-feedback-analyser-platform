@@ -54,7 +54,7 @@ const FILTER_OPS: Array<{ value: FilterRule["op"]; label: string }> = [
 const inputStyle: React.CSSProperties = {
   padding: "7px 10px",
   border: "1px solid var(--border-dim)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   background: "var(--bg-surface)",
   color: "var(--text-primary)",
   fontSize: "12px",
@@ -63,7 +63,7 @@ const inputStyle: React.CSSProperties = {
 const buttonStyle: React.CSSProperties = {
   padding: "7px 12px",
   border: "1px solid var(--border-dim)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   background: "transparent",
   color: "var(--text-secondary)",
   fontSize: "12px",
@@ -368,7 +368,7 @@ function AnalysisResultsContent({ analysisId }: { analysisId: string }) {
         <button type="button" onClick={() => setTab("analytics")} style={{ ...buttonStyle, border: "none", borderBottom: tab === "analytics" ? "2px solid var(--gold)" : "2px solid transparent" }}>Analytics</button>
       </div>
 
-      <section style={{ padding: "16px", border: "1px solid var(--border-dim)", borderRadius: "12px", background: "var(--bg-surface)", marginBottom: "16px" }}>
+      <section style={{ padding: "16px", border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)", background: "var(--bg-surface)", marginBottom: "16px" }}>
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: "10px" }}>
           <input value={searchDraft} onChange={(e) => setSearchDraft(e.target.value)} placeholder="Search" style={{ ...inputStyle, flex: "1 1 14rem", minWidth: "12rem" }} />
           <button type="button" onClick={() => setSearch(searchDraft.trim())} style={primaryButtonStyle}>Apply</button>
@@ -407,7 +407,7 @@ function AnalysisResultsContent({ analysisId }: { analysisId: string }) {
       {error && <div style={{ color: "var(--error, #ef4444)", fontSize: "12px", marginBottom: "12px" }}>{error}</div>}
 
       {tab === "table" ? (
-        <section style={{ border: "1px solid var(--border-dim)", borderRadius: "12px", background: "var(--bg-surface)", overflow: "hidden" }}>
+        <section style={{ border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)", background: "var(--bg-surface)", overflow: "hidden" }}>
           {loading ? (
             <div style={{ padding: "18px", fontSize: "12px", color: "var(--text-tertiary)" }}>Loading results</div>
           ) : !results ? (

@@ -47,7 +47,7 @@ export function ScatterPlot({
         style={{
           width: "100%",
           maxWidth: `${WIDTH}px`,
-          borderRadius: "12px",
+          borderRadius: "var(--radius-unified)",
           background:
             "radial-gradient(circle at top right, rgba(201,155,64,0.08), transparent 42%), var(--bg-base)",
           border: "1px solid var(--border-dim)",

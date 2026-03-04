@@ -4,6 +4,7 @@ Called by the `run-full` CLI command.
 """
 from __future__ import annotations
 
+import shutil
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +23,8 @@ from src.storage.model_signature import build_input_signature
 from src.psychometrics.runner import run_psychometrics
 from src.splits.splitter import stratified_split, validate_split_no_leakage
 from src.text_tasks.trainer import train_all_baselines
+from src.training.config import TrainingConfig
+from src.training.runner import run_training, TASK_LABEL_COLS
 from src.fusion.runner import run_fusion
 from src.contradiction.runner import run_contradiction_monitoring
 from src.evaluation.runner import run_evaluation
@@ -32,10 +35,89 @@ from src.utils.run_manager import RunManager
 from src.utils.reproducibility import set_all_seeds, collect_library_versions, hash_file
 from src.utils.logging import get_logger
 from src.storage.database import Database
+from src.storage.dataset_manager import DatasetManager
 from src.storage.model_registry import ModelRegistry
 import orjson
 
 log = get_logger(__name__)
+
+
+def _copy_pipeline_model_artifact(
+    source_artifact_path: Path,
+    destination_dir: Path,
+) -> Path:
+    """Mirror a registered training artifact into the pipeline run layout."""
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    if source_artifact_path.is_dir():
+        destination_path = destination_dir / "model"
+        if destination_path.exists():
+            shutil.rmtree(destination_path)
+        shutil.copytree(source_artifact_path, destination_path)
+        return destination_path
+
+    destination_path = destination_dir / "model.joblib"
+    shutil.copy2(source_artifact_path, destination_path)
+    return destination_path
+
+
+def _train_pipeline_tasks_via_runner(
+    *,
+    run_id: str,
+    run_dir: Path,
+    data_path: Path | None,
+    dataset_id: str | None,
+    dataset_version: int | None,
+    branch_id: str | None,
+    seed: int,
+    dataset_manager: DatasetManager | None,
+    model_registry: ModelRegistry,
+    pipeline_training: dict[str, Any],
+) -> list[str]:
+    """Train all text tasks with the shared training runner and mirror outputs."""
+    model_type = str(pipeline_training["model_type"])
+    config = TrainingConfig(**dict(pipeline_training.get("config") or {}))
+    training_artifacts_dir = run_dir / "_training_runs"
+    resolved_data_path: str | None = None
+
+    if data_path is not None:
+        resolved_data_path = str(data_path)
+    elif dataset_id is None or dataset_manager is None:
+        training_data_path = run_dir / "raw" / "pipeline_training_input.csv"
+        raw_snapshot_path = run_dir / "raw" / "dataset_snapshot.parquet"
+        if not raw_snapshot_path.exists():
+            raise ValueError(
+                "Pipeline training requires either data_path, dataset_id, or a saved raw snapshot."
+            )
+        pd.read_parquet(raw_snapshot_path).to_csv(training_data_path, index=False)
+        resolved_data_path = str(training_data_path)
+
+    registered_model_ids: list[str] = []
+    for task_name in TASK_LABEL_COLS:
+        result = run_training(
+            dataset_id=dataset_id,
+            data_path=resolved_data_path,
+            task=task_name,
+            model_type=model_type,
+            dataset_manager=dataset_manager,
+            model_registry=model_registry,
+            artifacts_dir=training_artifacts_dir,
+            config=config,
+            dataset_version=dataset_version,
+            branch_id=branch_id,
+            seed=seed,
+            name=f"pipeline_{task_name}_{model_type}_{run_id[:12]}",
+            producer_run_id=run_id,
+        )
+        registered_model_ids.append(result["model_id"])
+
+        artifact_path = model_registry.load_model_artifact(result["model_id"])
+        task_dir = run_dir / "text_tasks" / task_name / model_type
+        _copy_pipeline_model_artifact(artifact_path, task_dir)
+        (task_dir / "metrics.json").write_bytes(
+            orjson.dumps(result["metrics"], option=orjson.OPT_INDENT_2)
+        )
+
+    return registered_model_ids
 
 
 def run_full_pipeline(
@@ -49,6 +131,8 @@ def run_full_pipeline(
     dataset_id: str | None = None,
     dataset_version: int | None = None,
     branch_id: str | None = None,
+    dataset_manager: DatasetManager | None = None,
+    pipeline_training: dict[str, Any] | None = None,
     model_registry: ModelRegistry | None = None,
     db: Database | None = None,
 ) -> str:
@@ -209,42 +293,64 @@ def run_full_pipeline(
             text_col = "text_processed" if "text_processed" in df_train.columns else "text_feedback"
             source_text_col = "text_feedback" if "text_feedback" in df_train.columns else text_col
             resolved_columns = resolve_roles(df=df_train, column_roles={}, overrides={})
-            task_results = train_all_baselines(df_train, df_val, run_dir, seed=seed, text_col=text_col)
-            if model_registry is not None:
-                for task_name, models_for_task in task_results.items():
-                    for model_type, cls_result in models_for_task.items():
-                        metrics_path = run_dir / "text_tasks" / task_name / model_type / "metrics.json"
-                        try:
-                            model_meta = model_registry.register_model(
-                                name=f"pipeline_{task_name}_{model_type}_{run_id[:12]}",
-                                task=task_name,
-                                model_type=model_type,
-                                source_model_path=cls_result.model_path,
-                                source_metrics_path=metrics_path if metrics_path.exists() else None,
-                                dataset_id=dataset_id,
-                                dataset_version=dataset_version,
-                                config=cls_result.hyperparameters,
-                                run_id=run_id,
-                                input_signature=build_input_signature(
+            if pipeline_training is not None:
+                if model_registry is None:
+                    raise ValueError(
+                        "pipeline_training requires model_registry so models can be registered."
+                    )
+                registered_model_ids.extend(
+                    _train_pipeline_tasks_via_runner(
+                        run_id=run_id,
+                        run_dir=run_dir,
+                        data_path=data_path,
+                        dataset_id=dataset_id,
+                        dataset_version=dataset_version,
+                        branch_id=branch_id,
+                        seed=seed,
+                        dataset_manager=dataset_manager,
+                        model_registry=model_registry,
+                        pipeline_training=pipeline_training,
+                    )
+                )
+            else:
+                task_results = train_all_baselines(
+                    df_train, df_val, run_dir, seed=seed, text_col=text_col
+                )
+                if model_registry is not None:
+                    for task_name, models_for_task in task_results.items():
+                        for model_type, cls_result in models_for_task.items():
+                            metrics_path = run_dir / "text_tasks" / task_name / model_type / "metrics.json"
+                            try:
+                                model_meta = model_registry.register_model(
+                                    name=f"pipeline_{task_name}_{model_type}_{run_id[:12]}",
                                     task=task_name,
-                                    resolved_columns=resolved_columns,
-                                    source_text_col=source_text_col,
-                                    model_input_col=text_col,
-                                    label_col=resolved_columns.label_col_by_task.get(task_name, task_name),
-                                    preprocess_spec=DEFAULT_PREPROCESS_SPEC,
-                                    classes=[str(value) for value in cls_result.classes],
-                                ),
-                                preprocess_spec=DEFAULT_PREPROCESS_SPEC.as_dict(),
-                            )
-                            registered_model_ids.append(model_meta.id)
-                        except Exception:
-                            log.error(
-                                "pipeline_model_register_failed",
-                                run_id=run_id,
-                                task=task_name,
-                                model_type=model_type,
-                                error=traceback.format_exc(),
-                            )
+                                    model_type=model_type,
+                                    source_model_path=cls_result.model_path,
+                                    source_metrics_path=metrics_path if metrics_path.exists() else None,
+                                    dataset_id=dataset_id,
+                                    dataset_version=dataset_version,
+                                    config=cls_result.hyperparameters,
+                                    run_id=run_id,
+                                    input_signature=build_input_signature(
+                                        task=task_name,
+                                        resolved_columns=resolved_columns,
+                                        source_text_col=source_text_col,
+                                        model_input_col=text_col,
+                                        label_col=resolved_columns.label_col_by_task.get(task_name, task_name),
+                                        preprocess_spec=DEFAULT_PREPROCESS_SPEC,
+                                        classes=[str(value) for value in cls_result.classes],
+                                    ),
+                                    preprocess_spec=DEFAULT_PREPROCESS_SPEC.as_dict(),
+                                )
+                                registered_model_ids.append(model_meta.id)
+                            except Exception:
+                                log.error(
+                                    "pipeline_model_register_failed",
+                                    run_id=run_id,
+                                    task=task_name,
+                                    model_type=model_type,
+                                    error=traceback.format_exc(),
+                                )
             run_mgr.complete_stage(run_id, stage, started)
         except Exception:
             run_mgr.fail_stage(run_id, stage, traceback.format_exc())

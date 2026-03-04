@@ -54,6 +54,7 @@ class RunManager:
         dataset_version: int | None = None,
         branch_id: str | None = None,
         name: str | None = None,
+        pipeline_training: dict[str, Any] | None = None,
         db: "Database | None" = None,
     ) -> str:
         """Create a new run directory and write initial metadata. Returns run_id."""
@@ -82,6 +83,7 @@ class RunManager:
             "dataset_version": dataset_version,
             "branch_id": branch_id,
             "name": name,
+            "pipeline_training": pipeline_training,
         }
         self._write_json(run_dir / "metadata.json", metadata)
         self._write_json(run_dir / "artifact_manifest.json", {

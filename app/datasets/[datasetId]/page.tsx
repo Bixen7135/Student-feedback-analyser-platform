@@ -32,6 +32,11 @@ import {
 } from "@/app/lib/api";
 import { DataTable } from "@/app/components/DataTable";
 import { TagInput } from "@/app/components/TagInput";
+import {
+  formatLocalizedDate,
+  formatLocalizedDateTime,
+  useDateTimeLocale,
+} from "@/app/lib/i18n/date-time";
 
 type Tab = "preview" | "schema" | "versions" | "branches";
 
@@ -45,7 +50,7 @@ function formatBytes(bytes: number): string {
 // Shared inline styles
 // ---------------------------------------------------------------------------
 const btnBase = {
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "5px 12px",
   fontSize: "11px",
   fontFamily: "var(--font-jetbrains)",
@@ -56,7 +61,7 @@ const btnBase = {
 const inputStyle = {
   background: "var(--bg-elevated)",
   border: "1px solid var(--border)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "6px 10px",
   color: "var(--text-primary)",
   fontSize: "12px",
@@ -68,7 +73,7 @@ const inputStyle = {
 const selectStyle = {
   background: "var(--bg-elevated)",
   border: "1px solid var(--border)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "4px 8px",
   color: "var(--text-secondary)",
   fontSize: "11px",
@@ -83,6 +88,7 @@ export default function DatasetDetailPage({
 }) {
   const { datasetId } = use(params);
   const router = useRouter();
+  const dateTimeLocale = useDateTimeLocale();
 
   const [ds, setDs] = useState<DatasetSummary | null>(null);
   const [tab, setTab] = useState<Tab>("preview");
@@ -681,7 +687,7 @@ export default function DatasetDetailPage({
     background: tab === t ? "var(--bg-elevated)" : "transparent",
     border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
     borderBottom: tab === t ? "1px solid var(--bg-elevated)" : "1px solid transparent",
-    borderRadius: "6px 6px 0 0",
+    borderRadius: "var(--radius-unified) var(--radius-unified) 0 0",
     padding: "6px 14px",
     color: tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
     fontSize: "11px",
@@ -732,7 +738,7 @@ export default function DatasetDetailPage({
             <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} style={{ ...inputStyle, resize: "vertical" as const }} rows={2} placeholder="Description" />
             <TagInput tags={editTags} onChange={setEditTags} />
             <div className="flex items-center gap-2">
-              <button onClick={handleMetaSave} disabled={metaSaving} style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "5px 14px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: "pointer" }}>
+              <button onClick={handleMetaSave} disabled={metaSaving} style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "5px 14px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: "pointer" }}>
                 {metaSaving ? "Saving…" : "Save"}
               </button>
               <button onClick={() => { setEditing(false); setEditName(ds.name); setEditDesc(ds.description); setEditTags(ds.tags); }}
@@ -799,7 +805,7 @@ export default function DatasetDetailPage({
               <span className="dataset-detail__hero-stat">{formatBytes(ds.file_size_bytes)}</span>
               <span className="dataset-detail__hero-stat">v{ds.current_version}</span>
               {ds.author && <span className="dataset-detail__hero-stat">by {ds.author}</span>}
-              <span className="dataset-detail__hero-stat">{new Date(ds.created_at).toLocaleString()}</span>
+              <span className="dataset-detail__hero-stat">{formatLocalizedDateTime(ds.created_at, dateTimeLocale)}</span>
             </div>
 
             <div className="dataset-detail__hero-cta-grid" style={{ marginTop: "12px" }}>
@@ -809,7 +815,7 @@ export default function DatasetDetailPage({
                 style={{
                   background: "var(--gold)",
                   color: "#08080B",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   padding: "6px 12px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -826,7 +832,7 @@ export default function DatasetDetailPage({
                   background: "var(--bg-elevated)",
                   color: "var(--text-secondary)",
                   border: "1px solid var(--border)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   padding: "6px 12px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -843,7 +849,7 @@ export default function DatasetDetailPage({
                   background: "transparent",
                   color: "var(--text-secondary)",
                   border: "1px solid var(--border)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   padding: "6px 12px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -926,7 +932,7 @@ export default function DatasetDetailPage({
         >
           Branches
           {branches.length > 0 && (
-            <span style={{ marginLeft: "5px", background: "var(--bg-base)", borderRadius: "10px", padding: "1px 5px", fontSize: "9px", color: "var(--text-tertiary)" }}>
+            <span style={{ marginLeft: "5px", background: "var(--bg-base)", borderRadius: "var(--radius-unified)", padding: "1px 5px", fontSize: "9px", color: "var(--text-tertiary)" }}>
               {branches.length}
             </span>
           )}
@@ -959,7 +965,7 @@ export default function DatasetDetailPage({
                   </option>
                   {branchVersions.filter((v) => v.version !== branchHead?.version).map((v) => (
                     <option key={v.version} value={v.version}>
-                      v{v.version} — {new Date(v.created_at).toLocaleDateString()} ({v.row_count.toLocaleString()} rows)
+                      v{v.version} — {formatLocalizedDate(v.created_at, dateTimeLocale)} ({v.row_count.toLocaleString()} rows)
                     </option>
                   ))}
                 </select>
@@ -967,7 +973,7 @@ export default function DatasetDetailPage({
             )}
             {isReadOnlyVersion && (
               <div className="flex items-center gap-2">
-                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--warning)", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "4px", padding: "2px 8px" }}>
+                <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--warning)", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "var(--radius-unified)", padding: "2px 8px" }}>
                   Read-only — viewing historical version
                 </span>
                 {selectedPreviewVersion && (
@@ -1017,7 +1023,7 @@ export default function DatasetDetailPage({
 
           {/* Pending new rows */}
           {pendingNewRows.length > 0 && preview && (
-            <div ref={pendingNewRowsRef} style={{ marginTop: "16px", border: "1px solid rgba(251,146,60,0.4)", borderRadius: "8px", overflow: "hidden" }}>
+            <div ref={pendingNewRowsRef} style={{ marginTop: "16px", border: "1px solid rgba(251,146,60,0.4)", borderRadius: "var(--radius-unified)", overflow: "hidden" }}>
               <div style={{ background: "rgba(251,146,60,0.08)", padding: "8px 12px", borderBottom: "1px solid rgba(251,146,60,0.2)", display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "rgb(251,146,60)" }}>
                   {pendingNewRows.length} new row{pendingNewRows.length !== 1 ? "s" : ""} to add
@@ -1050,7 +1056,7 @@ export default function DatasetDetailPage({
                             <input
                               value={row[col] ?? ""}
                               onChange={(e) => updateNewRowCell(rowIdx, col, e.target.value)}
-                              style={{ width: "100%", minWidth: "60px", background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 6px", color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)", fontSize: "11px", outline: "none" }}
+                              style={{ width: "100%", minWidth: "60px", background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: "var(--radius-unified)", padding: "3px 6px", color: "var(--text-primary)", fontFamily: "var(--font-jetbrains)", fontSize: "11px", outline: "none" }}
                             />
                           </td>
                         ))}
@@ -1064,7 +1070,7 @@ export default function DatasetDetailPage({
 
           {/* Pending changes bar */}
           {totalPendingChanges > 0 && (
-            <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "12px", background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: "8px", padding: "10px 16px" }}>
+            <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "12px", background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.35)", borderRadius: "var(--radius-unified)", padding: "10px 16px" }}>
               <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "rgb(251,146,60)" }}>
                 ● {totalPendingChanges} unsaved change{totalPendingChanges !== 1 ? "s" : ""}
                 {pendingColumnRenames.size > 0 && ` · ${pendingColumnRenames.size} column rename${pendingColumnRenames.size !== 1 ? "s" : ""}`}
@@ -1078,7 +1084,7 @@ export default function DatasetDetailPage({
               </button>
               <button
                 onClick={openSaveVersionDialog}
-                style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "5px 14px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: "pointer" }}
+                style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "5px 14px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: "pointer" }}
               >
                 Save as new version →
               </button>
@@ -1089,7 +1095,7 @@ export default function DatasetDetailPage({
 
       {/* ===== SCHEMA TAB ===== */}
       {tab === "schema" && ds.schema_info.length > 0 && (
-        <div style={{ borderRadius: "8px", border: "1px solid var(--border-dim)", overflow: "hidden" }}>
+        <div style={{ borderRadius: "var(--radius-unified)", border: "1px solid var(--border-dim)", overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-jetbrains)", fontSize: "11px" }}>
             <thead>
               <tr>
@@ -1135,10 +1141,10 @@ export default function DatasetDetailPage({
                     <div className="flex items-center gap-3">
                       <span style={{ fontFamily: "var(--font-syne)", fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>v{v.version}</span>
                       {isHead && (
-                        <span style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>head</span>
+                        <span style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "var(--radius-unified)" }}>head</span>
                       )}
                       {isDefaultVersion && (
-                        <span style={{ background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.3)", color: "var(--teal)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>default</span>
+                        <span style={{ background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.3)", color: "var(--teal)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "var(--radius-unified)" }}>default</span>
                       )}
                       {!isEditing && (
                         <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>{v.reason}</span>
@@ -1202,7 +1208,7 @@ export default function DatasetDetailPage({
                         </button>
                       )}
                       <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)" }}>
-                        {new Date(v.created_at).toLocaleString()}
+                        {formatLocalizedDateTime(v.created_at, dateTimeLocale)}
                       </span>
                     </div>
                   </div>
@@ -1234,7 +1240,7 @@ export default function DatasetDetailPage({
 
                   {/* Delete confirm inline */}
                   {isConfirmDelete && (
-                    <div className="flex items-center gap-2" style={{ marginTop: "8px", background: "var(--error-dim)", border: "1px solid var(--error)", borderRadius: "6px", padding: "8px 12px" }}>
+                    <div className="flex items-center gap-2" style={{ marginTop: "8px", background: "var(--error-dim)", border: "1px solid var(--error)", borderRadius: "var(--radius-unified)", padding: "8px 12px" }}>
                       <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--error)" }}>
                         Delete v{v.version}? This cannot be undone.
                       </span>
@@ -1308,12 +1314,12 @@ export default function DatasetDetailPage({
                       {branch.name}
                     </span>
                     {branch.is_default && (
-                      <span style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>
+                      <span style={{ background: "var(--gold-faint)", border: "1px solid var(--gold-muted)", color: "var(--gold)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "var(--radius-unified)" }}>
                         default
                       </span>
                     )}
                     {isActive && !branch.is_default && (
-                      <span style={{ background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.3)", color: "var(--teal)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "4px" }}>
+                      <span style={{ background: "rgba(20,184,166,0.1)", border: "1px solid rgba(20,184,166,0.3)", color: "var(--teal)", padding: "1px 6px", fontSize: "9px", fontFamily: "var(--font-jetbrains)", borderRadius: "var(--radius-unified)" }}>
                         active
                       </span>
                     )}
@@ -1365,13 +1371,13 @@ export default function DatasetDetailPage({
                   <span>{branchVers.length} version{branchVers.length !== 1 ? "s" : ""}</span>
                   {headVer && <span>head: v{headVer.version} ({headVer.row_count.toLocaleString()} rows)</span>}
                   {branch.base_version_id && <span>forked from version {branch.base_version_id.slice(0, 8)}…</span>}
-                  <span>{new Date(branch.created_at).toLocaleString()}</span>
+                  <span>{formatLocalizedDateTime(branch.created_at, dateTimeLocale)}</span>
                   {branch.author && <span>by {branch.author}</span>}
                 </div>
 
                 {/* Delete branch confirm */}
                 {isConfirmDeleteThis && (
-                  <div className="flex items-center gap-2" style={{ marginTop: "10px", background: "var(--error-dim)", border: "1px solid var(--error)", borderRadius: "6px", padding: "8px 12px" }}>
+                  <div className="flex items-center gap-2" style={{ marginTop: "10px", background: "var(--error-dim)", border: "1px solid var(--error)", borderRadius: "var(--radius-unified)", padding: "8px 12px" }}>
                     <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--error)" }}>
                       Delete branch &quot;{branch.name}&quot; and all its unique versions?
                     </span>
@@ -1426,7 +1432,7 @@ export default function DatasetDetailPage({
                 <button
                   onClick={handleDataSave}
                   disabled={dataSaving}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: dataSaving ? "default" : "pointer", opacity: dataSaving ? 0.7 : 1 }}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: dataSaving ? "default" : "pointer", opacity: dataSaving ? 0.7 : 1 }}
                 >
                   {dataSaving ? "Saving…" : "Save Version"}
                 </button>
@@ -1476,7 +1482,7 @@ export default function DatasetDetailPage({
                   <option value="">Current head</option>
                   {versions.map((v) => (
                     <option key={v.id} value={v.id}>
-                      v{v.version} — {new Date(v.created_at).toLocaleDateString()} ({v.row_count.toLocaleString()} rows) [{v.branch_id === defaultBranchId ? "main" : (branches.find((b) => b.id === v.branch_id)?.name ?? "?")}]
+                      v{v.version} — {formatLocalizedDate(v.created_at, dateTimeLocale)} ({v.row_count.toLocaleString()} rows) [{v.branch_id === defaultBranchId ? "main" : (branches.find((b) => b.id === v.branch_id)?.name ?? "?")}]
                     </option>
                   ))}
                 </select>
@@ -1494,7 +1500,7 @@ export default function DatasetDetailPage({
                 <button
                   onClick={handleCreateBranch}
                   disabled={branchSaving || !newBranchName.trim()}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: branchSaving || !newBranchName.trim() ? "default" : "pointer", opacity: branchSaving || !newBranchName.trim() ? 0.7 : 1 }}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: branchSaving || !newBranchName.trim() ? "default" : "pointer", opacity: branchSaving || !newBranchName.trim() ? 0.7 : 1 }}
                 >
                   {branchSaving ? "Creating…" : "Create Branch"}
                 </button>
@@ -1536,7 +1542,7 @@ export default function DatasetDetailPage({
                 <button
                   onClick={handleUpdateBranch}
                   disabled={branchSaving}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: branchSaving ? "default" : "pointer", opacity: branchSaving ? 0.7 : 1 }}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: branchSaving ? "default" : "pointer", opacity: branchSaving ? 0.7 : 1 }}
                 >
                   {branchSaving ? "Saving…" : "Save"}
                 </button>
@@ -1580,7 +1586,7 @@ export default function DatasetDetailPage({
                 <button
                   onClick={() => copySourceVersionId && handleCopyVersion(copySourceVersionId)}
                   disabled={copySaving || !copyVersionReason.trim()}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: copySaving || !copyVersionReason.trim() ? "default" : "pointer", opacity: copySaving || !copyVersionReason.trim() ? 0.5 : 1 }}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: copySaving || !copyVersionReason.trim() ? "default" : "pointer", opacity: copySaving || !copyVersionReason.trim() ? 0.5 : 1 }}
                 >
                   {copySaving ? "Copying…" : "Copy Version"}
                 </button>
@@ -1604,7 +1610,7 @@ export default function DatasetDetailPage({
             <div className="flex flex-col gap-3">
               <div>
                 <label style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginBottom: "4px", display: "block" }}>Version to move</label>
-                <div style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-secondary)", padding: "8px 12px", background: "var(--bg-base)", borderRadius: "6px", border: "1px solid var(--border)" }}>
+                <div style={{ fontFamily: "var(--font-jetbrains)", fontSize: "11px", color: "var(--text-secondary)", padding: "8px 12px", background: "var(--bg-base)", borderRadius: "var(--radius-unified)", border: "1px solid var(--border)" }}>
                   {moveSourceVersionReason || "Unknown version"}
                 </div>
               </div>
@@ -1635,7 +1641,7 @@ export default function DatasetDetailPage({
                 <button
                   onClick={() => moveSourceVersionId && handleMoveVersion(moveSourceVersionId)}
                   disabled={moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0}
-                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "6px", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? "default" : "pointer", opacity: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? 0.5 : 1 }}
+                  style={{ background: "var(--gold)", color: "#08080B", border: "none", borderRadius: "var(--radius-unified)", padding: "6px 16px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-syne)", cursor: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? "default" : "pointer", opacity: moveSaving || !moveTargetBranchId || moveTargetBranches.length === 0 ? 0.5 : 1 }}
                 >
                   {moveSaving ? "Moving…" : "Move Version"}
                 </button>

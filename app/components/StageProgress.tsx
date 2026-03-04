@@ -1,5 +1,6 @@
 "use client";
 import type { StageStatus } from "@/app/lib/api";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 const STAGE_ORDER = [
   "ingest_preprocess",
@@ -38,6 +39,8 @@ interface Props {
 }
 
 export function StageProgress({ stages }: Props) {
+  const { t } = useI18n();
+
   return (
     <div className="flex flex-wrap gap-2">
       {STAGE_ORDER.map((stage) => {
@@ -56,15 +59,17 @@ export function StageProgress({ stages }: Props) {
               border: `1px solid ${style.border}`,
               color: style.color,
             }}
-          >
-            <span
-              className={`ui-stage-pill__dot${isRunning ? " animate-pulse-dot" : ""}`}
+            >
+              <span
+                className={`ui-stage-pill__dot${isRunning ? " animate-pulse-dot" : ""}`}
               style={{
                 background: style.dot,
               }}
-            />
-            <span>{STAGE_LABELS[stage] ?? stage}</span>
-            {s?.duration_seconds != null && <span className="ui-stage-pill__meta">{s.duration_seconds.toFixed(1)}s</span>}
+              />
+            <span>{t(STAGE_LABELS[stage] ?? stage)}</span>
+            {s?.duration_seconds != null && (
+              <span className="ui-stage-pill__meta">{t(`${s.duration_seconds.toFixed(1)}s`)}</span>
+            )}
           </div>
         );
       })}

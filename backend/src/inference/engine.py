@@ -11,10 +11,13 @@ from src.inference.signature import canonicalize_signature
 from src.preprocessing.spec import DEFAULT_PREPROCESS_SPEC, apply_preprocess
 from src.schema import TEXT_COLUMN_CANDIDATES, normalize_column_name
 from src.schema.types import DatasetSchemaSnapshot, ResolvedColumns
+from src.storage.model_registry import resolve_model_artifact_path
 from src.storage.models import ModelMeta
 from src.text_tasks.base import TextClassifier
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 
 
 def check_compatibility(
@@ -139,7 +142,8 @@ def run_inference(
         if model_input_col != source_text_col:
             working_df[model_input_col] = working_df[source_text_col].fillna("").astype(str)
 
-    clf = _load_classifier(Path(model_meta.storage_path) / "model.joblib", model_meta.model_type)
+    artifact_path = resolve_model_artifact_path(model_meta.storage_path)
+    clf = _load_classifier(artifact_path, model_meta.model_type)
     texts = working_df[model_input_col].fillna("").astype(str).tolist()
     preds = clf.predict(texts)
 
@@ -174,6 +178,8 @@ def _load_classifier(model_path: Path, model_type: str) -> TextClassifier:
         return TfidfClassifier.load(model_path)
     if model_type == "char_ngram":
         return CharNgramClassifier.load(model_path)
+    if model_type == MODEL_TYPE_XLM_ROBERTA:
+        return XlmRobertaClassifier.load(model_path)
     raise ValueError(f"Unknown model_type: {model_type!r}")
 
 

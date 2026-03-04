@@ -57,6 +57,16 @@ def fake_metrics_path(tmp_dir) -> Path:
     return path
 
 
+@pytest.fixture
+def fake_model_dir(tmp_dir) -> Path:
+    """Write a dummy directory-backed model artifact."""
+    model_dir = tmp_dir / "model_dir"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text('{"arch":"xlm-roberta"}', encoding="utf-8")
+    (model_dir / "weights.bin").write_bytes(b"transformer-weights")
+    return model_dir
+
+
 @pytest.fixture(scope="module")
 def api_client(tmp_path_factory):
     """TestClient with temporary storage."""
@@ -112,6 +122,18 @@ class TestModelRegistry:
         )
         artifact_path = Path(meta.storage_path) / "model.joblib"
         assert artifact_path.exists()
+
+    def test_register_stores_directory_artifact(self, registry, fake_model_dir):
+        meta = registry.register_model(
+            name="Directory Artifact Test",
+            task="sentiment",
+            model_type="xlm_roberta",
+            source_model_path=fake_model_dir,
+        )
+        artifact_path = Path(meta.storage_path) / "model"
+        assert artifact_path.is_dir()
+        assert (artifact_path / "config.json").exists()
+        assert (artifact_path / "weights.bin").exists()
 
     def test_register_model_round_trips_signature_fields(self, registry, fake_model_path):
         input_signature = {
@@ -274,6 +296,17 @@ class TestModelRegistry:
         # Should be loadable
         loaded = joblib.load(path)
         assert isinstance(loaded, LogisticRegression)
+
+    def test_load_model_artifact_directory(self, registry, fake_model_dir):
+        meta = registry.register_model(
+            name="Load Directory Test",
+            task="language",
+            model_type="xlm_roberta",
+            source_model_path=fake_model_dir,
+        )
+        path = registry.load_model_artifact(meta.id)
+        assert path.is_dir()
+        assert (path / "weights.bin").read_bytes() == b"transformer-weights"
 
     def test_load_model_artifact_not_found(self, registry):
         with pytest.raises(ValueError, match="not found"):

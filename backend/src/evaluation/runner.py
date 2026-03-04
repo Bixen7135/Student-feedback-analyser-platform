@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import joblib  # type: ignore
 import numpy as np
 import orjson  # type: ignore
 import pandas as pd
@@ -16,8 +15,10 @@ from src.evaluation.classification_metrics import (
 )
 from src.evaluation.regression_metrics import compute_regression_metrics, metrics_to_dict as reg_to_dict
 from src.evaluation.robustness import evaluate_on_short_text, sensitivity_analysis
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -32,6 +33,17 @@ TASK_CLASSES = {
     "sentiment": ["positive", "neutral", "negative"],
     "detail_level": ["short", "medium", "long"],
 }
+
+
+def _load_pipeline_classifier(model_dir: Path, model_type: str):
+    """Load a pipeline text-task classifier from its mirrored artifact."""
+    if model_type == "tfidf":
+        return TfidfClassifier.load(model_dir / "model.joblib")
+    if model_type == "char_ngram":
+        return CharNgramClassifier.load(model_dir / "model.joblib")
+    if model_type == MODEL_TYPE_XLM_ROBERTA:
+        return XlmRobertaClassifier.load(model_dir / "model")
+    raise ValueError(f"Unsupported model_type in pipeline evaluation: {model_type!r}")
 
 
 def run_evaluation(
@@ -52,13 +64,22 @@ def run_evaluation(
     # --- Text classification evaluation ---
     for task_name, label_col in TASK_LABEL_COLS.items():
         task_results: dict[str, Any] = {}
-        for model_type in ["tfidf", "char_ngram"]:
-            model_path = run_dir / "text_tasks" / task_name / model_type / "model.joblib"
-            if not model_path.exists():
+        task_dir = run_dir / "text_tasks" / task_name
+        if not task_dir.exists():
+            all_results[task_name] = task_results
+            continue
+
+        for model_dir in sorted(task_dir.iterdir()):
+            if not model_dir.is_dir():
+                continue
+            model_type = model_dir.name
+            model_path = model_dir / "model.joblib"
+            model_dir_path = model_dir / "model"
+            if not model_path.exists() and not model_dir_path.exists():
                 log.warning("model_not_found_skipping", task=task_name, model=model_type)
                 continue
 
-            clf_pipeline = joblib.load(model_path)
+            clf_pipeline = _load_pipeline_classifier(model_dir, model_type)
             texts = test_df[text_col].fillna("").tolist()
             true_labels = test_df[label_col].fillna("unknown").values
             preds = clf_pipeline.predict(texts)

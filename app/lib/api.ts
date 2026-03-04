@@ -128,6 +128,7 @@ export interface RunSummary {
   branch_id: string | null;
   dataset_version: number | null;
   name: string | null;
+  pipeline_training?: PipelineTrainingRequest | null;
   produced_models_count: number;
 }
 
@@ -264,6 +265,7 @@ export async function createRun(options?: {
   branch_id?: string | null;
   dataset_version?: number | null;
   name?: string | null;
+  pipeline_training?: PipelineTrainingRequest | null;
 }): Promise<RunSummary> {
   return apiFetch<RunSummary>("/runs", {
     method: "POST",
@@ -887,14 +889,30 @@ export async function fetchModelCompatibility(
 // Training types
 // ---------------------------------------------------------------------------
 
+export type TrainingTask = "language" | "sentiment" | "detail_level";
+export type TrainingModelType = "tfidf" | "char_ngram" | "xlm_roberta";
+export type TrainingBalancing = "none" | "oversample" | "class_weight";
+export type TrainingActivation = "relu" | "gelu" | "tanh";
+
 export interface TrainingConfigRequest {
   train_ratio?: number;
   val_ratio?: number;
   test_ratio?: number;
-  class_balancing?: "none" | "oversample" | "class_weight";
+  class_balancing?: TrainingBalancing;
   max_features?: number | null;
   C?: number | null;
   max_iter?: number | null;
+  pretrained_model?: string | null;
+  max_seq_length?: number | null;
+  batch_size?: number | null;
+  epochs?: number | null;
+  learning_rate?: number | null;
+  weight_decay?: number | null;
+  warmup_ratio?: number | null;
+  gradient_accumulation_steps?: number | null;
+  head_hidden_units?: number | null;
+  dropout?: number | null;
+  activation?: TrainingActivation | null;
   text_col?: string | null;
   label_col?: string | null;
 }
@@ -902,14 +920,19 @@ export interface TrainingConfigRequest {
 export interface StartTrainingRequest {
   dataset_id?: string | null;
   data_path?: string;
-  task: "language" | "sentiment" | "detail_level";
-  model_type: "tfidf" | "char_ngram";
+  task: TrainingTask;
+  model_type: TrainingModelType;
   config?: TrainingConfigRequest;
   dataset_version?: number | null;
   branch_id?: string | null;
   seed?: number;
   name?: string | null;
   base_model_id?: string | null;
+}
+
+export interface PipelineTrainingRequest {
+  model_type: TrainingModelType;
+  config?: TrainingConfigRequest;
 }
 
 export interface TrainingJob {
@@ -938,6 +961,19 @@ export interface TrainingListResponse {
   total: number;
 }
 
+export interface TrainingParameterContract {
+  name: string;
+  applies_to: "all" | TrainingModelType[];
+  required: boolean;
+  default: string | number | null;
+}
+
+export interface TrainingContractResponse {
+  model_types: TrainingModelType[];
+  classification_loss: string;
+  parameters: TrainingParameterContract[];
+}
+
 // ---------------------------------------------------------------------------
 // Training
 // ---------------------------------------------------------------------------
@@ -947,6 +983,10 @@ export async function startTraining(req: StartTrainingRequest): Promise<Training
     method: "POST",
     body: JSON.stringify(req),
   });
+}
+
+export async function fetchTrainingContract(): Promise<TrainingContractResponse> {
+  return apiFetch<TrainingContractResponse>("/training/contract");
 }
 
 export async function fetchTrainingJobs(params?: {
@@ -1391,7 +1431,7 @@ export interface EmbeddingPoint {
   row_idx: number | string;
   x: number | string;
   y: number | string;
-  [key: string]: string | number;
+  [key: string]: string | number | boolean;
 }
 
 export interface AnalysisEmbeddingsResponse {

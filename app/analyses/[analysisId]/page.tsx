@@ -33,6 +33,7 @@ import { ChartCard } from "@/app/components/charts/ChartCard";
 import { BarListChart } from "@/app/components/charts/BarListChart";
 import { Heatmap } from "@/app/components/charts/Heatmap";
 import { ScatterPlot } from "@/app/components/charts/ScatterPlot";
+import { formatLocalizedDateTime, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "var(--success)",
@@ -47,9 +48,9 @@ const TASK_LABELS: Record<string, string> = {
   detail_level: "Detail Level",
 };
 
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString(undefined, {
+function fmtDate(iso: string | null | undefined, locale: string): string {
+  if (!iso) return "\u2014";
+  return formatLocalizedDateTime(iso, locale, {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
@@ -63,6 +64,7 @@ export default function AnalysisDetailPage() {
   const params = useParams();
   const router = useRouter();
   const analysisId = params.analysisId as string;
+  const dateTimeLocale = useDateTimeLocale();
 
   const [analysis, setAnalysis] = useState<AnalysisRecord | null>(null);
   const [job, setJob] = useState<AnalysisJob | null>(null);
@@ -317,7 +319,7 @@ export default function AnalysisDetailPage() {
               </span>
             </div>
             <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-              {fmtDate(createdAt)}
+              {fmtDate(createdAt, dateTimeLocale)}
             </span>
             {tags.length > 0 && (
               <div className="flex gap-1">
@@ -325,7 +327,7 @@ export default function AnalysisDetailPage() {
                   <span
                     key={t}
                     style={{
-                      fontSize: "10px", padding: "2px 7px", borderRadius: "10px",
+                      fontSize: "10px", padding: "2px 7px", borderRadius: "var(--radius-unified)",
                       background: "var(--bg-surface)", border: "1px solid var(--border-dim)",
                       color: "var(--text-tertiary)",
                     }}
@@ -411,7 +413,7 @@ export default function AnalysisDetailPage() {
         <div
           style={{
             padding: "16px 20px",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             border: "1px solid var(--warning, #f59e0b)",
             background: "rgba(245,158,11,0.07)",
             color: "var(--warning, #f59e0b)",
@@ -429,7 +431,7 @@ export default function AnalysisDetailPage() {
         <div
           style={{
             padding: "14px 18px",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             border: "1px solid rgba(239,68,68,0.3)",
             background: "rgba(239,68,68,0.07)",
             color: "var(--error, #ef4444)",
@@ -452,7 +454,7 @@ export default function AnalysisDetailPage() {
           style={{
             padding: "20px",
             border: "1px solid var(--gold-muted)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             background: "var(--gold-faint)",
             marginBottom: "24px",
           }}
@@ -468,7 +470,7 @@ export default function AnalysisDetailPage() {
                 rows={2}
                 style={{
                   width: "100%", padding: "8px 10px",
-                  border: "1px solid var(--border-dim)", borderRadius: "5px",
+                  border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)", color: "var(--text-primary)",
                   fontSize: "13px", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box",
                 }}
@@ -484,7 +486,7 @@ export default function AnalysisDetailPage() {
                 onChange={(e) => setEditTags(e.target.value)}
                 style={{
                   width: "100%", padding: "7px 10px",
-                  border: "1px solid var(--border-dim)", borderRadius: "5px",
+                  border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)", color: "var(--text-primary)",
                   fontSize: "13px", boxSizing: "border-box",
                 }}
@@ -500,7 +502,7 @@ export default function AnalysisDetailPage() {
                 rows={3}
                 style={{
                   width: "100%", padding: "8px 10px",
-                  border: "1px solid var(--border-dim)", borderRadius: "5px",
+                  border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)", color: "var(--text-primary)",
                   fontSize: "13px", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box",
                 }}
@@ -523,7 +525,7 @@ export default function AnalysisDetailPage() {
           style={{
             padding: "16px 20px",
             border: "1px solid var(--border-dim)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             background: "var(--bg-surface)",
           }}
         >
@@ -552,7 +554,7 @@ export default function AnalysisDetailPage() {
           style={{
             padding: "16px 20px",
             border: "1px solid var(--border-dim)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             background: "var(--bg-surface)",
           }}
         >
@@ -585,7 +587,7 @@ export default function AnalysisDetailPage() {
           <div
             style={{
               padding: "10px 14px",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               background: "var(--gold-faint)",
               border: "1px solid var(--gold-muted)",
               fontSize: "11px",
@@ -603,7 +605,7 @@ export default function AnalysisDetailPage() {
                 style={{
                   padding: "16px 20px",
                   border: "1px solid var(--border-dim)",
-                  borderRadius: "8px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                 }}
               >
@@ -620,7 +622,7 @@ export default function AnalysisDetailPage() {
                     </div>
                   </div>
                   {m.error && (
-                    <span style={{ fontSize: "11px", color: "var(--error, #ef4444)", padding: "2px 8px", background: "rgba(239,68,68,0.08)", borderRadius: "4px" }}>
+                    <span style={{ fontSize: "11px", color: "var(--error, #ef4444)", padding: "2px 8px", background: "rgba(239,68,68,0.08)", borderRadius: "var(--radius-unified)" }}>
                       Error
                     </span>
                   )}
@@ -674,7 +676,7 @@ export default function AnalysisDetailPage() {
                 padding: "9px 18px",
                 background: "var(--gold)",
                 color: "#000",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 fontWeight: 600,
                 textDecoration: "none",
@@ -688,7 +690,7 @@ export default function AnalysisDetailPage() {
               style={{
                 padding: "9px 18px",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 color: "var(--text-secondary)",
                 textDecoration: "none",
@@ -702,7 +704,7 @@ export default function AnalysisDetailPage() {
               style={{
                 padding: "9px 18px",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 color: "var(--text-secondary)",
                 textDecoration: "none",
@@ -763,7 +765,7 @@ export default function AnalysisDetailPage() {
             marginTop: "24px",
             padding: "16px 20px",
             border: "1px solid var(--border-dim)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
           }}
         >
           <div style={{ fontSize: "11px", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>

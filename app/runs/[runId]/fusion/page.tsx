@@ -82,7 +82,7 @@ export default function FusionPage({ params }: Props) {
       </div>
 
       {/* Null-result note */}
-      <div style={{ background: "var(--gold-faint)", borderLeft: "3px solid var(--gold-muted)", borderRadius: "0 6px 6px 0", padding: "9px 14px", fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-jetbrains)" }}>
+      <div style={{ background: "var(--gold-faint)", borderLeft: "3px solid var(--gold-muted)", borderRadius: "0 var(--radius-unified) var(--radius-unified) 0", padding: "9px 14px", fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-jetbrains)" }}>
         Null results reported without spin — text may not improve on survey-only baseline.
       </div>
 

@@ -77,7 +77,7 @@ export function Heatmap({
                   title={cell.label ?? `${yLabel} / ${xLabel}: ${cell.value.toFixed(3)}`}
                   style={{
                     minHeight: "44px",
-                    borderRadius: "8px",
+                    borderRadius: "var(--radius-unified)",
                     border: "1px solid var(--border-dim)",
                     background,
                     color: "var(--text-primary)",

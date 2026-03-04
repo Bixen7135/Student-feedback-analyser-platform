@@ -10,17 +10,25 @@ import {
   fetchDatasetVersions,
   fetchDatasetBranches,
   fetchModels,
+  fetchTrainingContract,
   startTraining,
   DatasetSummary,
   DatasetVersion,
   DatasetBranch,
   ModelSummary,
+  TrainingConfigRequest,
+  TrainingContractResponse,
+  TrainingModelType,
+  TrainingTask,
+  TrainingBalancing,
+  TrainingActivation,
   StartTrainingRequest,
 } from "@/app/lib/api";
+import { formatLocalizedDate, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
-type Task = "language" | "sentiment" | "detail_level";
-type ModelType = "tfidf" | "char_ngram";
-type Balancing = "none" | "class_weight" | "oversample";
+type Task = TrainingTask;
+type ModelType = TrainingModelType;
+type Balancing = TrainingBalancing;
 
 const TASK_LABELS: Record<Task, string> = {
   language: "Language Detection",
@@ -37,6 +45,13 @@ const TASK_LABEL_COLS: Record<Task, string> = {
 const MODEL_LABELS: Record<ModelType, string> = {
   tfidf: "TF-IDF + Logistic Regression",
   char_ngram: "Char N-gram + Logistic Regression",
+  xlm_roberta: "XLM-RoBERTa",
+};
+
+const MODEL_DESCRIPTIONS: Record<ModelType, string> = {
+  tfidf: "Sparse word features with logistic regression.",
+  char_ngram: "Character n-grams with logistic regression.",
+  xlm_roberta: "Transformer fine-tuning for multilingual text.",
 };
 
 const STEP_LABELS = [
@@ -48,17 +63,69 @@ const STEP_LABELS = [
 
 const DEFAULT_TRAINING_DATASET_PATH = "/mnt/data/dataset.csv";
 
+const PARAMETER_LABELS: Record<string, string> = {
+  train_ratio: "Train ratio",
+  val_ratio: "Val ratio",
+  test_ratio: "Test ratio",
+  class_balancing: "Class balancing",
+  max_features: "Max features",
+  C: "Regularization (C)",
+  max_iter: "Max iterations",
+  pretrained_model: "Pretrained model",
+  max_seq_length: "Max sequence length",
+  batch_size: "Batch size",
+  epochs: "Epochs",
+  learning_rate: "Learning rate",
+  weight_decay: "Weight decay",
+  warmup_ratio: "Warmup ratio",
+  gradient_accumulation_steps: "Gradient accumulation",
+  head_hidden_units: "Head hidden units",
+  dropout: "Dropout",
+  activation: "Activation",
+  text_col: "Text column",
+  label_col: "Label column",
+  loss: "Loss",
+};
+
+const FALLBACK_TRAINING_CONTRACT: TrainingContractResponse = {
+  model_types: ["tfidf", "char_ngram", "xlm_roberta"],
+  classification_loss: "cross_entropy",
+  parameters: [
+    { name: "loss", applies_to: "all", required: true, default: "cross_entropy" },
+    { name: "train_ratio", applies_to: "all", required: true, default: 0.8 },
+    { name: "val_ratio", applies_to: "all", required: true, default: 0.1 },
+    { name: "test_ratio", applies_to: "all", required: true, default: 0.1 },
+    { name: "class_balancing", applies_to: "all", required: true, default: "class_weight" },
+    { name: "text_col", applies_to: "all", required: false, default: null },
+    { name: "label_col", applies_to: "all", required: false, default: null },
+    { name: "max_features", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "C", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "max_iter", applies_to: ["tfidf", "char_ngram"], required: false, default: null },
+    { name: "pretrained_model", applies_to: ["xlm_roberta"], required: true, default: "xlm-roberta-base" },
+    { name: "max_seq_length", applies_to: ["xlm_roberta"], required: true, default: 256 },
+    { name: "batch_size", applies_to: ["xlm_roberta"], required: true, default: 16 },
+    { name: "epochs", applies_to: ["xlm_roberta"], required: true, default: 3 },
+    { name: "learning_rate", applies_to: ["xlm_roberta"], required: true, default: 0.00002 },
+    { name: "weight_decay", applies_to: ["xlm_roberta"], required: true, default: 0.01 },
+    { name: "warmup_ratio", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "gradient_accumulation_steps", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "head_hidden_units", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "dropout", applies_to: ["xlm_roberta"], required: false, default: null },
+    { name: "activation", applies_to: ["xlm_roberta"], required: false, default: null },
+  ],
+};
+
 // All known system field names that a column can be mapped to.
 const SYSTEM_ROLES: { value: string; label: string }[] = [
   { value: "", label: "(not used)" },
-  { value: "text", label: "text — feedback text" },
-  { value: "sentiment", label: "sentiment — sentiment label" },
-  { value: "language", label: "language — language label" },
-  { value: "detail_level", label: "detail_level — detail level label" },
-  { value: "survey_id", label: "survey_id — record ID" },
+  { value: "text", label: "text - feedback text" },
+  { value: "sentiment", label: "sentiment - sentiment label" },
+  { value: "language", label: "language - language label" },
+  { value: "detail_level", label: "detail_level - detail level label" },
+  { value: "survey_id", label: "survey_id - record ID" },
   ...Array.from({ length: 9 }, (_, i) => ({
     value: `item_${i + 1}`,
-    label: `item_${i + 1} — ordinal survey item`,
+    label: `item_${i + 1} - ordinal survey item`,
   })),
 ];
 
@@ -69,6 +136,7 @@ const SYSTEM_ROLE_VALUES = new Set(
 export default function TrainingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const dateTimeLocale = useDateTimeLocale();
 
   // Wizard state
   const [step, setStep] = useState(0);
@@ -89,6 +157,28 @@ export default function TrainingPage() {
   const [balancing, setBalancing] = useState<Balancing>("class_weight");
   const [trainRatio, setTrainRatio] = useState(0.80);
   const [valRatio, setValRatio] = useState(0.10);
+  const [trainingContract, setTrainingContract] = useState<TrainingContractResponse>(
+    FALLBACK_TRAINING_CONTRACT
+  );
+  const [contractError, setContractError] = useState<string | null>(null);
+
+  // Baseline hyperparameters
+  const [baselineMaxFeatures, setBaselineMaxFeatures] = useState("");
+  const [baselineC, setBaselineC] = useState("");
+  const [baselineMaxIter, setBaselineMaxIter] = useState("");
+
+  // Transformer hyperparameters
+  const [pretrainedModel, setPretrainedModel] = useState("xlm-roberta-base");
+  const [maxSeqLength, setMaxSeqLength] = useState("256");
+  const [batchSize, setBatchSize] = useState("16");
+  const [epochs, setEpochs] = useState("3");
+  const [learningRate, setLearningRate] = useState("0.00002");
+  const [weightDecay, setWeightDecay] = useState("0.01");
+  const [warmupRatio, setWarmupRatio] = useState("");
+  const [gradientAccumulationSteps, setGradientAccumulationSteps] = useState("");
+  const [headHiddenUnits, setHeadHiddenUnits] = useState("");
+  const [dropout, setDropout] = useState("");
+  const [activation, setActivation] = useState<TrainingActivation | "">("");
 
   // Column role mapping: { datasetColumnName -> systemRole }
   const [datasetColumns, setDatasetColumns] = useState<string[]>([]);
@@ -119,6 +209,95 @@ export default function TrainingPage() {
       ([, r]) => r === TASK_LABEL_COLS[selectedTask]
     )?.[0] ?? "";
 
+  const modelContractFields = trainingContract.parameters.filter((parameter) => {
+    if (parameter.applies_to === "all") {
+      return false;
+    }
+    return parameter.applies_to.includes(selectedModel);
+  });
+
+  const baselineContractFields = modelContractFields.filter(
+    (parameter) => selectedModel !== "xlm_roberta" && parameter.applies_to !== "all"
+  );
+
+  function getParameterLabel(name: string): string {
+    return PARAMETER_LABELS[name] ?? name.replace(/_/g, " ");
+  }
+
+  function formatSummaryValue(value: unknown): string {
+    if (value === null || value === undefined || value === "") return "(not set)";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "(not set)";
+    if (typeof value === "boolean") return value ? "true" : "false";
+    return String(value);
+  }
+
+  function parseOptionalNumber(value: string, parser: (input: string) => number): number | undefined {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = parser(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  function buildTrainingConfig(): TrainingConfigRequest {
+    const config: TrainingConfigRequest = {
+      train_ratio: trainRatio,
+      val_ratio: valRatio,
+      test_ratio: testRatio,
+      class_balancing: balancing,
+      text_col: textCol || undefined,
+      label_col: labelCol || undefined,
+    };
+
+    if (selectedModel === "xlm_roberta") {
+      config.pretrained_model = pretrainedModel.trim() || undefined;
+      config.max_seq_length = parseOptionalNumber(maxSeqLength, (value) => parseInt(value, 10));
+      config.batch_size = parseOptionalNumber(batchSize, (value) => parseInt(value, 10));
+      config.epochs = parseOptionalNumber(epochs, (value) => parseInt(value, 10));
+      config.learning_rate = parseOptionalNumber(learningRate, Number);
+      config.weight_decay = parseOptionalNumber(weightDecay, Number);
+      config.warmup_ratio = parseOptionalNumber(warmupRatio, Number);
+      config.gradient_accumulation_steps = parseOptionalNumber(
+        gradientAccumulationSteps,
+        (value) => parseInt(value, 10)
+      );
+      config.head_hidden_units = parseOptionalNumber(headHiddenUnits, (value) => parseInt(value, 10));
+      config.dropout = parseOptionalNumber(dropout, Number);
+      config.activation = activation || undefined;
+      return config;
+    }
+
+    config.max_features = parseOptionalNumber(baselineMaxFeatures, (value) => parseInt(value, 10));
+    config.C = parseOptionalNumber(baselineC, Number);
+    config.max_iter = parseOptionalNumber(baselineMaxIter, (value) => parseInt(value, 10));
+    return config;
+  }
+
+  const modelSpecificSummaryRows: Array<[string, string]> =
+    selectedModel === "xlm_roberta"
+      ? [
+          ["Loss", trainingContract.classification_loss],
+          ["Pretrained model", formatSummaryValue(pretrainedModel.trim())],
+          ["Max sequence length", formatSummaryValue(parseOptionalNumber(maxSeqLength, (value) => parseInt(value, 10)))],
+          ["Batch size", formatSummaryValue(parseOptionalNumber(batchSize, (value) => parseInt(value, 10)))],
+          ["Epochs", formatSummaryValue(parseOptionalNumber(epochs, (value) => parseInt(value, 10)))],
+          ["Learning rate", formatSummaryValue(parseOptionalNumber(learningRate, Number))],
+          ["Weight decay", formatSummaryValue(parseOptionalNumber(weightDecay, Number))],
+          ["Warmup ratio", formatSummaryValue(parseOptionalNumber(warmupRatio, Number))],
+          [
+            "Gradient accumulation",
+            formatSummaryValue(parseOptionalNumber(gradientAccumulationSteps, (value) => parseInt(value, 10))),
+          ],
+          ["Head hidden units", formatSummaryValue(parseOptionalNumber(headHiddenUnits, (value) => parseInt(value, 10)))],
+          ["Dropout", formatSummaryValue(parseOptionalNumber(dropout, Number))],
+          ["Activation", formatSummaryValue(activation)],
+        ]
+      : [
+          ["Loss", trainingContract.classification_loss],
+          ["Max features", formatSummaryValue(parseOptionalNumber(baselineMaxFeatures, (value) => parseInt(value, 10)))],
+          ["Regularization (C)", formatSummaryValue(parseOptionalNumber(baselineC, Number))],
+          ["Max iterations", formatSummaryValue(parseOptionalNumber(baselineMaxIter, (value) => parseInt(value, 10)))],
+        ];
+
   function inferFallbackRole(columnName: string): string {
     const normalized = columnName.trim().toLowerCase();
     if (SYSTEM_ROLE_VALUES.has(normalized)) return normalized;
@@ -136,6 +315,17 @@ export default function TrainingPage() {
       .catch((e) => {
         setDatasetsError(e.message);
         setDatasetsLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchTrainingContract()
+      .then((contract) => {
+        setTrainingContract(contract);
+        setContractError(null);
+      })
+      .catch((error: unknown) => {
+        setContractError(error instanceof Error ? error.message : "Unable to load training contract.");
       });
   }, []);
 
@@ -246,6 +436,7 @@ export default function TrainingPage() {
     setLaunching(true);
     setLaunchError(null);
     try {
+      const config = buildTrainingConfig();
       const req: StartTrainingRequest = {
         dataset_id: selectedDataset?.id ?? null,
         data_path: selectedDataset ? undefined : DEFAULT_TRAINING_DATASET_PATH,
@@ -256,14 +447,7 @@ export default function TrainingPage() {
         seed,
         name: trainName.trim() || undefined,
         base_model_id: fineTuneEnabled ? baseModelId : undefined,
-        config: {
-          train_ratio: trainRatio,
-          val_ratio: valRatio,
-          test_ratio: testRatio,
-          class_balancing: balancing,
-          text_col: textCol || undefined,
-          label_col: labelCol || undefined,
-        },
+        config,
       };
       const job = await startTraining(req);
       router.push(`/training/${job.job_id}`);
@@ -276,7 +460,7 @@ export default function TrainingPage() {
   const card = {
     background: "var(--bg-surface)",
     border: "1px solid var(--border)",
-    borderRadius: "10px",
+    borderRadius: "var(--radius-unified)",
     padding: "24px",
     marginBottom: "16px",
   } as const;
@@ -284,7 +468,7 @@ export default function TrainingPage() {
   const inputStyle = {
     background: "var(--bg-base)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "8px 12px",
     color: "var(--text-primary)",
     fontSize: "13px",
@@ -299,7 +483,7 @@ export default function TrainingPage() {
     width: "100%",
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "7px 12px",
     fontFamily: "var(--font-jetbrains)",
     fontSize: "12px",
@@ -311,7 +495,7 @@ export default function TrainingPage() {
     background: "var(--gold)",
     color: "#000",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "9px 20px",
     fontSize: "13px",
     fontWeight: 600,
@@ -323,7 +507,7 @@ export default function TrainingPage() {
     background: "transparent",
     color: "var(--text-secondary)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "9px 20px",
     fontSize: "13px",
     cursor: "pointer",
@@ -607,7 +791,7 @@ export default function TrainingPage() {
                 textAlign: "center",
               }}
             >
-              No dataset selected — the pipeline will use the default{" "}
+              No dataset selected - the pipeline will use the default{" "}
               <span style={{ color: "var(--text-secondary)" }}>
                 /mnt/data/dataset.csv
               </span>
@@ -658,7 +842,7 @@ export default function TrainingPage() {
                 className="flex items-center gap-3"
                 style={{
                   padding: "12px 14px",
-                  borderRadius: "8px",
+                  borderRadius: "var(--radius-unified)",
                   border: `1px solid ${selectedTask === t ? "var(--gold)" : "var(--border)"}`,
                   background:
                     selectedTask === t
@@ -707,7 +891,7 @@ export default function TrainingPage() {
                 className="flex items-center gap-3"
                 style={{
                   padding: "12px 14px",
-                  borderRadius: "8px",
+                  borderRadius: "var(--radius-unified)",
                   border: `1px solid ${selectedModel === m ? "var(--gold)" : "var(--border)"}`,
                   background:
                     selectedModel === m
@@ -734,6 +918,15 @@ export default function TrainingPage() {
                   >
                     {MODEL_LABELS[m]}
                   </div>
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-tertiary)",
+                      fontFamily: "var(--font-jetbrains)",
+                    }}
+                  >
+                    {MODEL_DESCRIPTIONS[m]}
+                  </div>
                 </div>
               </label>
             ))}
@@ -741,10 +934,12 @@ export default function TrainingPage() {
 
           <div className="flex justify-between">
             <button style={btnGhost} onClick={() => setStep(0)}>
-              ← Back
+              <span aria-hidden="true">← </span>
+              <span>Back</span>
             </button>
             <button style={btnPrimary} onClick={() => setStep(2)}>
-              Next →
+              <span>Next</span>
+              <span aria-hidden="true"> →</span>
             </button>
           </div>
         </div>
@@ -833,12 +1028,248 @@ export default function TrainingPage() {
             />
           </div>
 
+          <div style={{ marginBottom: "20px" }}>
+            <div
+              className="flex items-center justify-between gap-3"
+              style={{ marginBottom: "10px", flexWrap: "wrap" }}
+            >
+              <span style={label}>Model Hyperparameters</span>
+              <span
+                style={{
+                  fontSize: "10px",
+                  color: "var(--text-tertiary)",
+                  fontFamily: "var(--font-jetbrains)",
+                }}
+              >
+                {contractError ? "Using fallback contract" : "Loaded from platform contract"}
+              </span>
+            </div>
+
+            {selectedModel === "xlm_roberta" ? (
+              <div className="flex flex-col gap-4">
+                <div style={{ marginBottom: "4px" }}>
+                  <span style={label}>{getParameterLabel("pretrained_model")}</span>
+                  <input
+                    style={inputStyle}
+                    value={pretrainedModel}
+                    onChange={(e) => setPretrainedModel(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex gap-4" style={{ flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                    <span style={label}>{getParameterLabel("max_seq_length")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      style={inputStyle}
+                      value={maxSeqLength}
+                      onChange={(e) => setMaxSeqLength(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                    <span style={label}>{getParameterLabel("batch_size")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      style={inputStyle}
+                      value={batchSize}
+                      onChange={(e) => setBatchSize(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                    <span style={label}>{getParameterLabel("epochs")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      style={inputStyle}
+                      value={epochs}
+                      onChange={(e) => setEpochs(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-4" style={{ flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                    <span style={label}>{getParameterLabel("learning_rate")}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.000001"
+                      style={inputStyle}
+                      value={learningRate}
+                      onChange={(e) => setLearningRate(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                    <span style={label}>{getParameterLabel("weight_decay")}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.001"
+                      style={inputStyle}
+                      value={weightDecay}
+                      onChange={(e) => setWeightDecay(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-unified)",
+                    padding: "14px",
+                    background: "var(--bg-base)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "11px",
+                      color: "var(--text-tertiary)",
+                      fontFamily: "var(--font-syne)",
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Optional Transformer Knobs
+                  </div>
+                  <div className="flex gap-4" style={{ flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("warmup_ratio")}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={warmupRatio}
+                        onChange={(e) => setWarmupRatio(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("gradient_accumulation_steps")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={gradientAccumulationSteps}
+                        onChange={(e) => setGradientAccumulationSteps(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("head_hidden_units")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={headHiddenUnits}
+                        onChange={(e) => setHeadHiddenUnits(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("dropout")}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step="0.05"
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={dropout}
+                        onChange={(e) => setDropout(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("activation")}</span>
+                      <select
+                        style={selectStyle}
+                        value={activation}
+                        onChange={(e) => setActivation(e.target.value as TrainingActivation | "")}
+                      >
+                        <option value="">Leave empty</option>
+                        <option value="relu">relu</option>
+                        <option value="gelu">gelu</option>
+                        <option value="tanh">tanh</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-unified)",
+                  padding: "14px",
+                  background: "var(--bg-base)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-jetbrains)",
+                    marginBottom: "12px",
+                  }}
+                >
+                  {`Baseline controls match the current training contract for ${selectedModel}.`}
+                </div>
+                <div className="flex gap-4" style={{ flexWrap: "wrap" }}>
+                  {baselineContractFields.some((parameter) => parameter.name === "max_features") && (
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("max_features")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={baselineMaxFeatures}
+                        onChange={(e) => setBaselineMaxFeatures(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {baselineContractFields.some((parameter) => parameter.name === "C") && (
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("C")}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={baselineC}
+                        onChange={(e) => setBaselineC(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {baselineContractFields.some((parameter) => parameter.name === "max_iter") && (
+                    <div style={{ flex: "1 1 12rem", minWidth: "min(100%, 12rem)" }}>
+                      <span style={label}>{getParameterLabel("max_iter")}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        style={inputStyle}
+                        placeholder="Leave empty"
+                        value={baselineMaxIter}
+                        onChange={(e) => setBaselineMaxIter(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Fine-tuning toggle */}
           <div
             style={{
               marginBottom: "20px",
               border: `1px solid ${fineTuneEnabled ? "var(--gold)" : "var(--border)"}`,
-              borderRadius: "8px",
+              borderRadius: "var(--radius-unified)",
               padding: "14px",
               background: fineTuneEnabled ? "var(--gold-faint)" : "var(--bg-base)",
             }}
@@ -870,8 +1301,9 @@ export default function TrainingPage() {
                     fontFamily: "var(--font-jetbrains)",
                   }}
                 >
-                  Warm-start LR weights from a previously trained model of the same task
-                  and type.
+                  Reuse a compatible registry model of the same task and type. Baselines
+                  warm-start linear weights; XLM-R continues fine-tuning from the saved
+                  checkpoint.
                 </div>
               </div>
             </label>
@@ -881,13 +1313,12 @@ export default function TrainingPage() {
                 <span style={label}>Base model</span>
                 {baseModelsLoading && (
                   <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                    Loading models…
+                    Loading models...
                   </p>
                 )}
                 {!baseModelsLoading && availableBaseModels.length === 0 && (
                   <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                    No compatible models found for task &quot;{selectedTask}&quot; /
-                    type &quot;{selectedModel}&quot;. Train a model first.
+                    {`No compatible models found for task "${selectedTask}" / type "${selectedModel}". Train a model first.`}
                   </p>
                 )}
                 {!baseModelsLoading && availableBaseModels.length > 0 && (
@@ -898,11 +1329,11 @@ export default function TrainingPage() {
                       setBaseModelId(e.target.value || null)
                     }
                   >
-                    <option value="">— select base model —</option>
+                    <option value="">- select base model -</option>
                     {availableBaseModels.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name} · v{m.version} ·{" "}
-                        {new Date(m.created_at).toLocaleDateString()}
+                        {formatLocalizedDate(m.created_at, dateTimeLocale)}
                         {m.metrics &&
                         typeof (m.metrics as Record<string, unknown>).val === "object"
                           ? ` · val F1 ${(
@@ -933,7 +1364,7 @@ export default function TrainingPage() {
               <div
                 style={{
                   border: "1px solid var(--border)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   overflow: "hidden",
                 }}
               >
@@ -1054,13 +1485,14 @@ export default function TrainingPage() {
                       fontWeight: 600,
                     }}
                   >
-                    {textCol || "none — assign text role"}
+                    {textCol || "none - assign text role"}
                   </span>
                 </span>
                 <span>
-                  Label ({selectedTask}):{" "}
+                  {`Label (${selectedTask}):`}
                   <span
                     style={{
+                      marginLeft: "4px",
                       color: labelCol
                         ? "var(--success)"
                         : "var(--error, #ef4444)",
@@ -1068,7 +1500,7 @@ export default function TrainingPage() {
                     }}
                   >
                     {labelCol ||
-                      `none — assign ${TASK_LABEL_COLS[selectedTask]} role`}
+                      `none - assign ${TASK_LABEL_COLS[selectedTask]} role`}
                   </span>
                 </span>
               </div>
@@ -1077,10 +1509,12 @@ export default function TrainingPage() {
 
           <div className="flex justify-between">
             <button style={btnGhost} onClick={() => setStep(1)}>
-              ← Back
+              <span aria-hidden="true">← </span>
+              <span>Back</span>
             </button>
             <button style={btnPrimary} onClick={() => setStep(3)}>
-              Next →
+              <span>Next</span>
+              <span aria-hidden="true"> →</span>
             </button>
           </div>
         </div>
@@ -1143,7 +1577,7 @@ export default function TrainingPage() {
                       baseModelId
                         ? (availableBaseModels.find((m) => m.id === baseModelId)?.name ??
                             baseModelId)
-                        : "(none selected — fresh training)",
+                        : "(none selected - fresh training)",
                     ],
                   ]
                 : []),
@@ -1155,6 +1589,7 @@ export default function TrainingPage() {
               ],
               ["Balancing", balancing],
               ["Seed", String(seed)],
+              ...modelSpecificSummaryRows,
             ].map(([k, v]) => (
               <div
                 key={k}
@@ -1184,7 +1619,7 @@ export default function TrainingPage() {
           <div
             style={{
               background: "var(--bg-base)",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               padding: "10px 14px",
               fontSize: "12px",
               color: "var(--text-tertiary)",
@@ -1202,7 +1637,7 @@ export default function TrainingPage() {
               style={{
                 background: "rgba(239,68,68,0.08)",
                 border: "1px solid rgba(239,68,68,0.3)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 padding: "10px 14px",
                 fontSize: "13px",
                 color: "var(--error, #ef4444)",
@@ -1215,7 +1650,8 @@ export default function TrainingPage() {
 
           <div className="flex justify-between">
             <button style={btnGhost} onClick={() => setStep(2)}>
-              ← Back
+              <span aria-hidden="true">← </span>
+              <span>Back</span>
             </button>
             <button
               style={{
@@ -1226,7 +1662,7 @@ export default function TrainingPage() {
               disabled={launching}
               onClick={handleLaunch}
             >
-              {launching ? "Launching…" : "Launch Training"}
+              {launching ? "Launching..." : "Launch Training"}
             </button>
           </div>
         </div>

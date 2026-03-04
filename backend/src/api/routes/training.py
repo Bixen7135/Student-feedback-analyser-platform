@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 from src.api.dependencies import get_dataset_manager, get_model_registry, get_db
 from src.training import runner as training_runner
 from src.training.config import TrainingConfig
+from src.training.contract import (
+    CLASSIFICATION_LOSS,
+    TRAINING_PARAMETER_TABLE,
+    VALID_MODEL_TYPES,
+)
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
@@ -53,6 +58,17 @@ class TrainingConfigRequest(BaseModel):
     max_features: int | None = Field(None, gt=0)
     C: float | None = Field(None, gt=0)
     max_iter: int | None = Field(None, gt=0)
+    pretrained_model: str | None = None
+    max_seq_length: int | None = Field(None, gt=0)
+    batch_size: int | None = Field(None, gt=0)
+    epochs: int | None = Field(None, gt=0)
+    learning_rate: float | None = Field(None, gt=0)
+    weight_decay: float | None = Field(None, ge=0)
+    warmup_ratio: float | None = Field(None, ge=0, le=1)
+    gradient_accumulation_steps: int | None = Field(None, gt=0)
+    head_hidden_units: int | None = Field(None, gt=0)
+    dropout: float | None = Field(None, ge=0, lt=1)
+    activation: str | None = Field(None, pattern="^(relu|gelu|tanh)$")
     text_col: str | None = None
     label_col: str | None = None
 
@@ -61,7 +77,7 @@ class StartTrainingRequest(BaseModel):
     dataset_id: str | None = None
     data_path: str | None = None
     task: str = Field(..., pattern="^(language|sentiment|detail_level)$")
-    model_type: str = Field(..., pattern="^(tfidf|char_ngram)$")
+    model_type: str = Field(..., pattern="^(tfidf|char_ngram|xlm_roberta)$")
     config: TrainingConfigRequest | None = None
     dataset_version: int | None = None
     branch_id: str | None = None
@@ -97,9 +113,25 @@ class TrainingListResponse(BaseModel):
     total: int
 
 
+class TrainingContractResponse(BaseModel):
+    model_types: list[str]
+    classification_loss: str
+    parameters: list[dict]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/contract", response_model=TrainingContractResponse)
+async def get_training_contract():
+    """Return the canonical training parameter contract table."""
+    return TrainingContractResponse(
+        model_types=sorted(VALID_MODEL_TYPES),
+        classification_loss=CLASSIFICATION_LOSS,
+        parameters=[dict(row) for row in TRAINING_PARAMETER_TABLE],
+    )
 
 
 @router.post("/start", response_model=TrainingJobResponse, status_code=202)
@@ -146,20 +178,15 @@ async def start_training(
 
     job_id = f"job_{uuid.uuid4().hex[:16]}"
 
-    config: TrainingConfig | None = None
-    if body.config:
-        cfg = body.config
-        config = TrainingConfig(
-            train_ratio=cfg.train_ratio,
-            val_ratio=cfg.val_ratio,
-            test_ratio=cfg.test_ratio,
-            class_balancing=cfg.class_balancing,
-            max_features=cfg.max_features,
-            C=cfg.C,
-            max_iter=cfg.max_iter,
-            text_col=cfg.text_col,
-            label_col=cfg.label_col,
-        )
+    config_payload = body.config.model_dump(exclude_none=True) if body.config else {}
+    config = TrainingConfig(
+        **config_payload,
+        base_model_id=body.base_model_id,
+    )
+    try:
+        serialized_config = config.to_dict(model_type=body.model_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     job = training_runner.create_job(
         job_id=job_id,
@@ -171,6 +198,7 @@ async def start_training(
         seed=body.seed,
         name=body.name,
         base_model_id=body.base_model_id,
+        config=serialized_config,
         db=db,
     )
 

@@ -3,22 +3,40 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchAnalyses, deleteAnalysis, AnalysisRecord } from "@/app/lib/api";
+import { formatLocalizedDateTime, useDateTimeLocale } from "@/app/lib/i18n/date-time";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "var(--success)",
-  running:   "var(--warning, #f59e0b)",
-  pending:   "var(--text-tertiary)",
-  failed:    "var(--error, #ef4444)",
+  running: "var(--warning, #f59e0b)",
+  pending: "var(--text-tertiary)",
+  failed: "var(--error, #ef4444)",
 };
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
+const STATUS_LABELS: Record<string, string> = {
+  completed: "Completed",
+  running: "Running",
+  pending: "Pending",
+  failed: "Failed",
+};
+
+function fmtDate(iso: string, locale: string): string {
+  return formatLocalizedDateTime(iso, locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
+function fmtCount(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
 export default function AnalysesPage() {
+  const dateTimeLocale = useDateTimeLocale();
+  const { t } = useI18n();
   const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -26,11 +44,9 @@ export default function AnalysesPage() {
   const [page, setPage] = useState(1);
   const perPage = 20;
 
-  // Filters
   const [statusFilter, setStatusFilter] = useState("");
   const [datasetFilter, setDatasetFilter] = useState("");
 
-  // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -48,15 +64,17 @@ export default function AnalysesPage() {
           page,
           per_page: perPage,
         });
+
         if (!active) return;
+
         setAnalyses(resp.analyses);
         setTotal(resp.total);
         setError(null);
 
-        // Keep polling while any analysis is running/pending
         const anyActive = resp.analyses.some(
-          (a) => a.status === "running" || a.status === "pending"
+          (a) => a.status === "running" || a.status === "pending",
         );
+
         if (anyActive) {
           timeout = setTimeout(load, 3000);
         }
@@ -70,6 +88,7 @@ export default function AnalysesPage() {
 
     setLoading(true);
     load();
+
     return () => {
       active = false;
       clearTimeout(timeout);
@@ -81,17 +100,21 @@ export default function AnalysesPage() {
       setConfirmId(id);
       return;
     }
+
     setDeletingId(id);
     setConfirmId(null);
+
     try {
       await deleteAnalysis(id);
       const nextTotal = Math.max(0, total - 1);
       const nextPage = Math.min(page, Math.max(1, Math.ceil(nextTotal / perPage)));
       setTotal(nextTotal);
+
       if (nextPage !== page) {
         setPage(nextPage);
         return;
       }
+
       setAnalyses((prev) => prev.filter((a) => a.id !== id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -106,7 +129,6 @@ export default function AnalysesPage() {
 
   return (
     <div className="page-shell page-standard page-shell--lg animate-fade-up">
-      {/* Header */}
       <div className="flex items-center justify-between" style={{ marginBottom: "28px" }}>
         <div>
           <h1
@@ -118,10 +140,10 @@ export default function AnalysesPage() {
               margin: 0,
             }}
           >
-            Analysis History
+            {t("Analysis History")}
           </h1>
           <p style={{ color: "var(--text-tertiary)", fontSize: "13px", marginTop: "4px" }}>
-            Batch analyses — {total} total
+            {t(`Batch analyses - ${fmtCount(total)} total`)}
           </p>
         </div>
         <div className="analyses-page__header-actions">
@@ -133,7 +155,7 @@ export default function AnalysesPage() {
               color: "var(--text-secondary)",
             }}
           >
-            Compare
+            {t("Compare")}
           </Link>
           <Link
             href="/analyses/new"
@@ -143,53 +165,59 @@ export default function AnalysesPage() {
               color: "#000",
             }}
           >
-            + New Analysis
+            {t("+ New Analysis")}
           </Link>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3" style={{ marginBottom: "20px" }}>
+      <div className="flex flex-wrap items-center gap-3" style={{ marginBottom: "20px" }}>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
           style={{
             padding: "7px 12px",
             border: "1px solid var(--border-dim)",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             background: "var(--bg-surface)",
             color: "var(--text-primary)",
             fontSize: "13px",
           }}
         >
-          <option value="">All statuses</option>
-          <option value="completed">Completed</option>
-          <option value="running">Running</option>
-          <option value="pending">Pending</option>
-          <option value="failed">Failed</option>
+          <option value="">{t("All statuses")}</option>
+          <option value="completed">{t("Completed")}</option>
+          <option value="running">{t("Running")}</option>
+          <option value="pending">{t("Pending")}</option>
+          <option value="failed">{t("Failed")}</option>
         </select>
         <input
           type="text"
-          placeholder="Search by dataset ID…"
+          placeholder={t("Search by dataset ID...")}
           value={datasetFilter}
-          onChange={(e) => { setDatasetFilter(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setDatasetFilter(e.target.value);
+            setPage(1);
+          }}
           style={{
             padding: "7px 12px",
             border: "1px solid var(--border-dim)",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             background: "var(--bg-surface)",
             color: "var(--text-primary)",
             fontSize: "13px",
-            width: "220px",
+            flex: "1 1 22rem",
+            minWidth: "18rem",
+            maxWidth: "100%",
           }}
         />
       </div>
 
-      {/* Disclaimer */}
       <div
         style={{
           padding: "10px 14px",
-          borderRadius: "6px",
+          borderRadius: "var(--radius-unified)",
           background: "var(--gold-faint)",
           border: "1px solid var(--gold-muted)",
           fontSize: "12px",
@@ -197,16 +225,14 @@ export default function AnalysesPage() {
           marginBottom: "20px",
         }}
       >
-        Batch analysis only. Results are aggregate summaries — not for individual-level decisions.
-        No causal claims are implied.
+        {t("Batch analysis only. Results are aggregate summaries - not for individual-level decisions. No causal claims are implied.")}
       </div>
 
-      {/* Error */}
       {error && (
         <div
           style={{
             padding: "12px 16px",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             background: "rgba(239,68,68,0.08)",
             border: "1px solid rgba(239,68,68,0.3)",
             color: "var(--error, #ef4444)",
@@ -218,10 +244,16 @@ export default function AnalysesPage() {
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
-        <div style={{ color: "var(--text-tertiary)", fontSize: "13px", padding: "40px 0", textAlign: "center" }}>
-          Loading analyses…
+        <div
+          style={{
+            color: "var(--text-tertiary)",
+            fontSize: "13px",
+            padding: "40px 0",
+            textAlign: "center",
+          }}
+        >
+          {t("Loading analyses...")}
         </div>
       ) : analyses.length === 0 ? (
         <div
@@ -229,11 +261,11 @@ export default function AnalysesPage() {
             padding: "60px 24px",
             textAlign: "center",
             border: "1px dashed var(--border-dim)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
           }}
         >
           <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "16px" }}>
-            No analyses yet.
+            {t("No analyses yet.")}
           </div>
           <Link
             href="/analyses/new"
@@ -241,20 +273,20 @@ export default function AnalysesPage() {
               padding: "8px 20px",
               background: "var(--gold)",
               color: "#000",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               fontSize: "13px",
               fontWeight: 600,
               textDecoration: "none",
             }}
           >
-            Run your first analysis
+            {t("Run your first analysis")}
           </Link>
         </div>
       ) : (
         <div
           style={{
             border: "1px solid var(--border-dim)",
-            borderRadius: "8px",
+            borderRadius: "var(--radius-unified)",
             overflowX: "auto",
             overflowY: "hidden",
           }}
@@ -262,9 +294,9 @@ export default function AnalysesPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "var(--bg-surface-2, var(--bg-surface))" }}>
-                {["Name", "Dataset", "Models", "Status", "Created", "Actions"].map((h) => (
+                {["Name", "Dataset", "Models", "Status", "Created", "Actions"].map((header) => (
                   <th
-                    key={h}
+                    key={header}
                     style={{
                       padding: "10px 16px",
                       textAlign: "left",
@@ -277,14 +309,17 @@ export default function AnalysesPage() {
                       borderBottom: "1px solid var(--border-dim)",
                     }}
                   >
-                    {h}
+                    {t(header)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {analyses.map((a, i) => {
-                const summary = a.result_summary as { n_rows?: number; models_applied?: { task: string }[] } | null;
+                const summary = a.result_summary as {
+                  n_rows?: number;
+                  models_applied?: { task: string }[];
+                } | null;
                 const nModels = a.model_ids?.length ?? 0;
                 const tasks = summary?.models_applied?.map((m) => m.task) ?? [];
                 const uniqueTasks = [...new Set(tasks)];
@@ -311,7 +346,8 @@ export default function AnalysesPage() {
                       </Link>
                       {a.description && (
                         <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "2px" }}>
-                          {a.description.slice(0, 60)}{a.description.length > 60 ? "…" : ""}
+                          {a.description.slice(0, 60)}
+                          {a.description.length > 60 ? "..." : ""}
                         </div>
                       )}
                     </td>
@@ -326,34 +362,34 @@ export default function AnalysesPage() {
                             textDecoration: "none",
                           }}
                         >
-                          {a.dataset_id.slice(0, 12)}…
+                          {a.dataset_id.slice(0, 12)}...
                           {a.dataset_version != null && (
                             <span style={{ color: "var(--text-tertiary)" }}> v{a.dataset_version}</span>
                           )}
                         </Link>
                       ) : (
-                        <span style={{ color: "var(--text-tertiary)", fontSize: "12px" }}>—</span>
+                        <span style={{ color: "var(--text-tertiary)", fontSize: "12px" }}>-</span>
                       )}
                     </td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                        {nModels} model{nModels !== 1 ? "s" : ""}
+                        {t(`${fmtCount(nModels)} model${nModels !== 1 ? "s" : ""}`)}
                       </div>
                       {uniqueTasks.length > 0 && (
                         <div className="flex gap-1" style={{ marginTop: "4px", flexWrap: "wrap" }}>
-                          {uniqueTasks.map((t) => (
+                          {uniqueTasks.map((task) => (
                             <span
-                              key={t}
+                              key={task}
                               style={{
                                 fontSize: "10px",
                                 padding: "1px 6px",
-                                borderRadius: "4px",
+                                borderRadius: "var(--radius-unified)",
                                 background: "var(--bg-surface)",
                                 border: "1px solid var(--border-dim)",
                                 color: "var(--text-tertiary)",
                               }}
                             >
-                              {t}
+                              {task}
                             </span>
                           ))}
                         </div>
@@ -372,18 +408,18 @@ export default function AnalysesPage() {
                           }}
                         />
                         <span style={{ fontSize: "12px", color: "var(--text-secondary)", textTransform: "capitalize" }}>
-                          {a.status}
+                          {t(STATUS_LABELS[a.status] ?? a.status)}
                         </span>
                       </div>
                       {summary?.n_rows != null && (
                         <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "2px" }}>
-                          {summary.n_rows.toLocaleString()} rows
+                          {t(`${fmtCount(summary.n_rows)} rows`)}
                         </div>
                       )}
                     </td>
                     <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                       <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                        {fmtDate(a.created_at)}
+                        {fmtDate(a.created_at, dateTimeLocale)}
                       </span>
                     </td>
                     <td style={{ padding: "12px 16px", minWidth: "220px" }}>
@@ -393,14 +429,14 @@ export default function AnalysesPage() {
                             href={`/analyses/${a.id}`}
                             className="analyses-page__row-action analyses-page__row-action--primary"
                           >
-                            Open
+                            {t("Open")}
                           </Link>
                           {a.status === "completed" && (
                             <Link
                               href={`/analyses/${a.id}/results`}
                               className="analyses-page__row-action analyses-page__row-action--secondary"
                             >
-                              Results
+                              {t("Results")}
                             </Link>
                           )}
                           <button
@@ -409,7 +445,7 @@ export default function AnalysesPage() {
                             disabled={deletingId === a.id}
                             className={`analyses-page__row-action analyses-page__row-action--danger${confirmId === a.id ? " is-confirm" : ""}`}
                           >
-                            {confirmId === a.id ? "Confirm Delete?" : deletingId === a.id ? "..." : "Delete"}
+                            {confirmId === a.id ? t("Confirm Delete?") : deletingId === a.id ? "..." : t("Delete")}
                           </button>
                         </div>
                         {confirmId === a.id && (
@@ -419,7 +455,7 @@ export default function AnalysesPage() {
                               onClick={() => setConfirmId(null)}
                               className="analyses-page__row-action analyses-page__row-action--plain"
                             >
-                              Cancel
+                              {t("Cancel")}
                             </button>
                           </div>
                         )}
@@ -433,7 +469,6 @@ export default function AnalysesPage() {
         </div>
       )}
 
-      {/* Pagination */}
       {!loading && !error && total > 0 && (
         <div
           className="flex items-center justify-between gap-3"
@@ -453,7 +488,7 @@ export default function AnalysesPage() {
               justifySelf: "start",
             }}
           >
-            Showing {rangeStart}-{rangeEnd} of {total}
+            {t(`Showing ${fmtCount(rangeStart)}-${fmtCount(rangeEnd)} of ${fmtCount(total)}`)}
           </div>
           <div className="flex items-center gap-2" style={{ gridColumn: 2, justifyContent: "center" }}>
             <button
@@ -462,7 +497,7 @@ export default function AnalysesPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page <= 1 ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
@@ -471,7 +506,7 @@ export default function AnalysesPage() {
                 opacity: page <= 1 ? 0.5 : 1,
               }}
             >
-              Prev
+              {t("Prev")}
             </button>
             <span
               style={{
@@ -482,7 +517,7 @@ export default function AnalysesPage() {
                 textAlign: "center",
               }}
             >
-              Page {page} / {totalPages}
+              {t(`Page ${page} of ${totalPages}`)}
             </span>
             <button
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
@@ -490,7 +525,7 @@ export default function AnalysesPage() {
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 color: page >= totalPages ? "var(--text-tertiary)" : "var(--text-secondary)",
                 fontFamily: "var(--font-jetbrains)",
                 fontSize: "10px",
@@ -499,7 +534,7 @@ export default function AnalysesPage() {
                 opacity: page >= totalPages ? 0.5 : 1,
               }}
             >
-              Next
+              {t("Next")}
             </button>
           </div>
         </div>
@@ -507,4 +542,3 @@ export default function AnalysesPage() {
     </div>
   );
 }
-

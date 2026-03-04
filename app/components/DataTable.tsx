@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 interface DataTableProps {
   storageKey?: string;
@@ -62,6 +63,7 @@ export function DataTable({
   pendingColumnRenames,
   onColumnRename,
 }: DataTableProps) {
+  const { t } = useI18n();
   const totalPages = Math.ceil(totalRows / limit) || 1;
   const currentPage = Math.floor(offset / limit) + 1;
 
@@ -523,7 +525,7 @@ export function DataTable({
           className="data-table__toolbar-count"
           style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", marginLeft: "auto" }}
         >
-          {totalRows.toLocaleString()} rows
+          {t(`${totalRows.toLocaleString()} rows`)}
         </span>
         <button
           type="button"
@@ -532,7 +534,7 @@ export function DataTable({
           style={{
             background: showFind ? "var(--accent)" : "var(--bg-elevated)",
             border: "1px solid var(--border)",
-            borderRadius: "6px",
+            borderRadius: "var(--radius-unified)",
             padding: "4px 10px",
             color: showFind ? "#fff" : "var(--text-secondary)",
             fontSize: "11px",
@@ -540,7 +542,7 @@ export function DataTable({
             cursor: "pointer",
           }}
         >
-          Find {findText ? `(${matches.length})` : ""}
+          {t("Find")} {findText ? `(${matches.length})` : ""}
         </button>
       </div>
 
@@ -549,7 +551,7 @@ export function DataTable({
         <div style={{
           background: "var(--bg-elevated)",
           border: "1px solid var(--border)",
-          borderRadius: "8px",
+          borderRadius: "var(--radius-unified)",
           padding: "10px 12px",
           marginBottom: "10px",
           display: "flex",
@@ -560,7 +562,7 @@ export function DataTable({
             <input
               ref={findInputRef}
               type="text"
-              placeholder="Find…"
+              placeholder={t("Find...")}
               value={findText}
               onChange={(e) => { setFindText(e.target.value); setMatchIdx(0); }}
               onKeyDown={(e) => {
@@ -573,11 +575,11 @@ export function DataTable({
               onChange={(e) => setFindCol(e.target.value)}
               style={{ ...selectStyle, maxWidth: "200px" }}
             >
-              <option value="">All columns</option>
-              {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="">{t("All columns")}</option>
+              {columns.map((c) => <option key={c} value={c} data-i18n-skip>{c}</option>)}
             </select>
             <span style={{ fontFamily: "var(--font-jetbrains)", fontSize: "10px", color: "var(--text-tertiary)", minWidth: "64px" }}>
-              {matches.length > 0 ? `${safeMatchIdx + 1} / ${matches.length}` : findText ? "0 matches" : ""}
+              {matches.length > 0 ? `${safeMatchIdx + 1} / ${matches.length}` : findText ? t("0 matches") : ""}
             </span>
             <button onClick={() => setMatchIdx((p) => Math.max(0, p - 1))} disabled={matches.length === 0} style={smallBtnStyle}>▲</button>
             <button onClick={() => setMatchIdx((p) => (p + 1) % Math.max(1, matches.length))} disabled={matches.length === 0} style={smallBtnStyle}>▼</button>
@@ -585,7 +587,7 @@ export function DataTable({
               onClick={() => setShowReplace((v) => !v)}
               style={{ ...smallBtnStyle, marginLeft: "auto" }}
             >
-              {showReplace ? "▲ Replace" : "▼ Replace"}
+              {showReplace ? `▲ ${t("Replace")}` : `▼ ${t("Replace")}`}
             </button>
             <button onClick={() => { setShowFind(false); setShowReplace(false); setFindText(""); }} style={smallBtnStyle}>✕</button>
           </div>
@@ -594,13 +596,13 @@ export function DataTable({
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="Replace with…"
+                placeholder={t("Replace with...")}
                 value={replaceText}
                 onChange={(e) => setReplaceText(e.target.value)}
                 style={inputStyle}
               />
-              <button onClick={replaceCurrent} disabled={matches.length === 0} style={smallBtnStyle}>Replace</button>
-              <button onClick={replaceAll} disabled={matches.length === 0} style={smallBtnStyle}>Replace All</button>
+              <button onClick={replaceCurrent} disabled={matches.length === 0} style={smallBtnStyle}>{t("Replace")}</button>
+              <button onClick={replaceAll} disabled={matches.length === 0} style={smallBtnStyle}>{t("Replace All")}</button>
             </div>
           )}
         </div>
@@ -614,19 +616,19 @@ export function DataTable({
           gap: "10px",
           background: "rgba(99,102,241,0.08)",
           border: "1px solid rgba(99,102,241,0.3)",
-          borderRadius: "6px",
+          borderRadius: "var(--radius-unified)",
           padding: "6px 12px",
           marginBottom: "10px",
           fontFamily: "var(--font-jetbrains)",
           fontSize: "11px",
           color: "var(--text-secondary)",
         }}>
-          <span>All {rows.length} rows on this page are selected.</span>
+          <span>{t(`All ${rows.length} rows on this page are selected.`)}</span>
           <button
             onClick={selectAllDocument}
             style={{ ...smallBtnStyle, color: "rgb(99,102,241)", borderColor: "rgba(99,102,241,0.4)" }}
           >
-            Select all {totalRows.toLocaleString()} rows in document
+            {t(`Select all ${totalRows.toLocaleString()} rows in document`)}
           </button>
         </div>
       )}
@@ -639,7 +641,7 @@ export function DataTable({
           gap: "10px",
           background: "rgba(239,68,68,0.08)",
           border: "1px solid rgba(239,68,68,0.3)",
-          borderRadius: "6px",
+          borderRadius: "var(--radius-unified)",
           padding: "6px 12px",
           marginBottom: "10px",
           fontFamily: "var(--font-jetbrains)",
@@ -647,16 +649,16 @@ export function DataTable({
           color: "var(--text-secondary)",
         }}>
           <span>
-            {selectedCount.toLocaleString()} row{selectedCount !== 1 ? "s" : ""} selected
-            {allDocumentSelected && " (entire document)"}
+            {t(`${selectedCount.toLocaleString()} row${selectedCount !== 1 ? "s" : ""} selected`)}
+            {allDocumentSelected && ` ${t("(entire document)")}`}
           </span>
           <button
             onClick={handleDeleteSelected}
             style={{ ...smallBtnStyle, background: "rgba(239,68,68,0.15)", color: "rgb(239,68,68)" }}
           >
-            Delete selected
+            {t("Delete selected")}
           </button>
-          <button onClick={clearSelection} style={smallBtnStyle}>Clear</button>
+          <button onClick={clearSelection} style={smallBtnStyle}>{t("Clear")}</button>
         </div>
       )}
 
@@ -664,7 +666,7 @@ export function DataTable({
       <div
         tabIndex={0}
         onKeyDown={onTableKeyDown}
-        style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid var(--border-dim)", outline: "none" }}
+        style={{ overflowX: "auto", borderRadius: "var(--radius-unified)", border: "1px solid var(--border-dim)", outline: "none" }}
       >
         <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-jetbrains)", fontSize: "11px" }}>
           <thead>
@@ -707,7 +709,7 @@ export function DataTable({
                     onDoubleClick={() => startHeaderEdit(colIdx)}
                     title={
                       editable && onColumnRename
-                        ? `${displayName} - Double-click to rename column`
+                        ? t("Double-click to rename column")
                         : displayName
                     }
                   >
@@ -726,7 +728,7 @@ export function DataTable({
                         style={{
                           background: "var(--bg-base)",
                           border: "1px solid var(--accent)",
-                          borderRadius: "4px",
+                          borderRadius: "var(--radius-unified)",
                           padding: "2px 6px",
                           color: "var(--text-primary)",
                           fontFamily: "var(--font-jetbrains)",
@@ -739,14 +741,17 @@ export function DataTable({
                         }}
                       />
                     ) : (
-                      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span
+                        data-i18n-skip
+                        style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
                         {displayName}
                       </span>
                     )}
                     <div
                       role="separator"
                       aria-orientation="vertical"
-                      title="Drag to resize column"
+                      title={t("Drag to resize column")}
                       onMouseDown={(e) => startColumnResize(e, colIdx)}
                       style={{
                         position: "absolute",
@@ -766,11 +771,11 @@ export function DataTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={columns.length + 1 + (editable ? 1 : 0)} style={emptyCellStyle}>Loading…</td>
+                <td colSpan={columns.length + 1 + (editable ? 1 : 0)} style={emptyCellStyle}>{t("Loading...")}</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 1 + (editable ? 1 : 0)} style={emptyCellStyle}>No data</td>
+                <td colSpan={columns.length + 1 + (editable ? 1 : 0)} style={emptyCellStyle}>{t("No data")}</td>
               </tr>
             ) : (
               rows.map((row, rowIdx) => {
@@ -800,7 +805,7 @@ export function DataTable({
                       <div
                         role="separator"
                         aria-orientation="horizontal"
-                        title="Drag to resize row"
+                        title={t("Drag to resize row")}
                         onMouseDown={(e) => startRowResize(e, absRowIdx)}
                         style={{
                           position: "absolute",
@@ -830,6 +835,7 @@ export function DataTable({
                       return (
                         <td
                           key={colIdx}
+                          data-i18n-skip
                           ref={(el) => {
                             if (el) cellRefs.current.set(cellKey, el);
                             else cellRefs.current.delete(cellKey);
@@ -882,7 +888,7 @@ export function DataTable({
                                 minWidth: "80px",
                                 background: "var(--bg-base)",
                                 border: "1px solid var(--accent)",
-                                borderRadius: "4px",
+                                borderRadius: "var(--radius-unified)",
                                 padding: "2px 6px",
                                 color: "var(--text-primary)",
                                 fontFamily: "var(--font-jetbrains)",
@@ -912,7 +918,7 @@ export function DataTable({
             onClick={() => onPageChange(0)}
             disabled={offset === 0}
             style={pageBtnStyle(offset === 0)}
-            title="First page"
+            title={t("First page")}
           >
             «
           </button>
@@ -921,7 +927,7 @@ export function DataTable({
             disabled={offset === 0}
             style={pageBtnStyle(offset === 0)}
           >
-            Prev
+            {t("Prev")}
           </button>
           {/* Page jump input */}
           <input
@@ -937,7 +943,7 @@ export function DataTable({
               textAlign: "center",
               background: "var(--bg-elevated)",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               padding: "4px 6px",
               color: "var(--text-primary)",
               fontFamily: "var(--font-jetbrains)",
@@ -953,14 +959,14 @@ export function DataTable({
             disabled={offset + limit >= totalRows}
             style={pageBtnStyle(offset + limit >= totalRows)}
           >
-            Next
+            {t("Next")}
           </button>
           {/* Last page */}
           <button
             onClick={() => onPageChange((totalPages - 1) * limit)}
             disabled={currentPage === totalPages}
             style={pageBtnStyle(currentPage === totalPages)}
-            title="Last page"
+            title={t("Last page")}
           >
             »
           </button>
@@ -973,7 +979,7 @@ export function DataTable({
             style={selectStyle}
           >
             {[25, 50, 100].map((n) => (
-              <option key={n} value={n}>{n} rows</option>
+              <option key={n} value={n}>{t(`${n} rows`)}</option>
             ))}
           </select>
         )}
@@ -1010,7 +1016,7 @@ function escapeRegex(s: string) {
 const inputStyle: React.CSSProperties = {
   background: "var(--bg-base)",
   border: "1px solid var(--border)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "5px 10px",
   color: "var(--text-primary)",
   fontSize: "11px",
@@ -1024,7 +1030,7 @@ const inputStyle: React.CSSProperties = {
 const selectStyle: React.CSSProperties = {
   background: "var(--bg-elevated)",
   border: "1px solid var(--border)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "4px 8px",
   color: "var(--text-secondary)",
   fontSize: "11px",
@@ -1035,7 +1041,7 @@ const selectStyle: React.CSSProperties = {
 const smallBtnStyle: React.CSSProperties = {
   background: "var(--bg-elevated)",
   border: "1px solid var(--border)",
-  borderRadius: "6px",
+  borderRadius: "var(--radius-unified)",
   padding: "3px 8px",
   color: "var(--text-secondary)",
   fontSize: "11px",
@@ -1063,7 +1069,7 @@ function pageBtnStyle(disabled: boolean): React.CSSProperties {
   return {
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "4px 10px",
     color: disabled ? "var(--text-tertiary)" : "var(--text-secondary)",
     fontSize: "11px",

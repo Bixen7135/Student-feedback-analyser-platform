@@ -91,7 +91,7 @@ export default function ContradictionPage({ params }: Props) {
       {data && (
         <>
           {/* Disclaimer from backend */}
-          <div style={{ background: "var(--gold-faint)", borderLeft: "3px solid var(--gold-muted)", borderRadius: "0 6px 6px 0", padding: "9px 14px", fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-jetbrains)" }}>
+          <div style={{ background: "var(--gold-faint)", borderLeft: "3px solid var(--gold-muted)", borderRadius: "0 var(--radius-unified) var(--radius-unified) 0", padding: "9px 14px", fontSize: "11px", color: "var(--text-secondary)", fontFamily: "var(--font-jetbrains)" }}>
             <strong style={{ color: "var(--gold)" }}>Monitoring only.</strong> {data.disclaimer}
           </div>
 

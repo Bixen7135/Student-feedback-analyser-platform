@@ -24,8 +24,10 @@ from src.storage.model_signature import build_input_signature, build_training_pr
 from src.storage.model_registry import ModelRegistry
 from src.text_tasks.char_ngram_classifier import CharNgramClassifier
 from src.text_tasks.tfidf_classifier import TfidfClassifier
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
 from src.text_tasks.base import TextClassifier
 from src.training.config import TrainingConfig
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA, VALID_MODEL_TYPES
 from src.reporting.model_card import generate_model_card_for_registry_model
 from src.utils.logging import get_logger
 
@@ -38,7 +40,6 @@ log = get_logger(__name__)
 TASK_LABEL_COLS: dict[str, str] = dict(TASK_STANDARD_COLUMNS)
 
 VALID_TASKS = frozenset(TASK_LABEL_COLS.keys())
-VALID_MODEL_TYPES = frozenset({"tfidf", "char_ngram"})
 
 MIN_SAMPLES_PER_CLASS = 5
 MIN_CLASSES = 2
@@ -168,6 +169,20 @@ def _build_classifier(model_type: str, config: TrainingConfig) -> TextClassifier
         return TfidfClassifier(**kwargs)
     elif model_type == "char_ngram":
         return CharNgramClassifier(**kwargs)
+    elif model_type == MODEL_TYPE_XLM_ROBERTA:
+        return XlmRobertaClassifier(
+            pretrained_model=config.pretrained_model,
+            max_seq_length=config.max_seq_length,
+            batch_size=config.batch_size,
+            epochs=config.epochs,
+            learning_rate=config.learning_rate,
+            weight_decay=config.weight_decay,
+            warmup_ratio=config.warmup_ratio,
+            gradient_accumulation_steps=config.gradient_accumulation_steps,
+            head_hidden_units=config.head_hidden_units,
+            dropout=config.dropout,
+            activation=config.activation,
+        )
     raise ValueError(
         f"Unknown model_type: {model_type!r}. Valid: {sorted(VALID_MODEL_TYPES)}"
     )
@@ -208,7 +223,7 @@ def run_training(
     dataset_id: str | None,
     task: str,
     model_type: str,
-    dataset_manager: DatasetManager,
+    dataset_manager: DatasetManager | None,
     model_registry: ModelRegistry,
     artifacts_dir: Path,
     config: TrainingConfig | None = None,
@@ -219,6 +234,7 @@ def run_training(
     base_model_id: str | None = None,
     job_id: str | None = None,
     data_path: str | None = None,
+    producer_run_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Train a text classifier on a user dataset and auto-register in ModelRegistry.
@@ -239,9 +255,12 @@ def run_training(
     # base_model_id can also come from config
     if base_model_id is None:
         base_model_id = config.base_model_id
+    else:
+        config.base_model_id = base_model_id
+    serialized_config = config.to_dict(model_type=model_type)
 
     # 1. Load dataset either from DatasetManager or directly from a CSV path.
-    if dataset_id:
+    if dataset_id and dataset_manager is not None:
         df = dataset_manager.get_dataframe(dataset_id, dataset_version, branch_id=branch_id)
         if df is None or len(df) == 0:
             raise LabelValidationError(
@@ -356,7 +375,7 @@ def run_training(
     train_labels = train_df[label_col].tolist()
     clf.fit(train_texts, train_labels, seed=seed)
 
-    # 6b. Fine-tuning: warm-start from base model when base_model_id is provided
+    # 6b. Fine-tuning: continue from a compatible base model when supported
     warm_started = False
     base_clf: TextClassifier | None = None
     if base_model_id is not None:
@@ -378,11 +397,26 @@ def run_training(
             )
         base_model_path = model_registry.load_model_artifact(base_model_id)
         base_clf_instance = clf.__class__.load(base_model_path)
-        warm_started = clf.warm_start_from(
-            base_clf_instance, train_texts, train_labels, seed=seed
-        )
         base_clf = base_clf_instance
-        if not warm_started:
+        warm_start_fn = getattr(clf, "warm_start_from", None)
+        if callable(warm_start_fn):
+            warm_started = bool(
+                warm_start_fn(
+                    base_clf_instance,
+                    train_texts,
+                    train_labels,
+                    seed=seed,
+                )
+            )
+        else:
+            log.info(
+                "warm_start_not_supported",
+                base_model_id=base_model_id,
+                task=task,
+                model_type=model_type,
+            )
+
+        if callable(warm_start_fn) and not warm_started:
             log.warning(
                 "warm_start_skipped_class_mismatch",
                 base_model_id=base_model_id,
@@ -479,7 +513,11 @@ def run_training(
     run_dir = artifacts_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    model_path = run_dir / "model.joblib"
+    model_path = (
+        run_dir / "model"
+        if model_type == MODEL_TYPE_XLM_ROBERTA
+        else run_dir / "model.joblib"
+    )
     metrics_path = run_dir / "metrics.json"
     clf.save(model_path)
     metrics_path.write_bytes(orjson.dumps(metrics, option=orjson.OPT_INDENT_2))
@@ -494,7 +532,7 @@ def run_training(
         model_input_col=text_col,
         label_col=label_col,
         preprocess_spec=DEFAULT_PREPROCESS_SPEC,
-        training_config=config.to_dict(),
+        training_config=serialized_config,
         classes=[str(value) for value in classes],
     )
     training_profile = build_training_profile(
@@ -512,9 +550,9 @@ def run_training(
         source_metrics_path=metrics_path,
         dataset_id=dataset_id,
         dataset_version=dataset_version if dataset_id else None,
-        config=config.to_dict(),
+        config=serialized_config,
         metrics=metrics,
-        run_id=run_id,
+        run_id=producer_run_id or run_id,
         base_model_id=base_model_id,
         job_id=job_id,
         input_signature=input_signature,
@@ -528,7 +566,7 @@ def run_training(
         "model_name": model_meta.name,
         "model_version": model_meta.version,
         "metrics": metrics,
-        "config": config.to_dict(),
+        "config": serialized_config,
     }
 
 
@@ -547,6 +585,7 @@ def create_job(
     seed: int,
     name: str | None,
     base_model_id: str | None = None,
+    config: dict[str, Any] | None = None,
     db: Database | None = None,
 ) -> dict[str, Any]:
     now = _utcnow()
@@ -568,7 +607,7 @@ def create_job(
         "model_name": None,
         "model_version": None,
         "metrics": None,
-        "config": None,
+        "config": config,
     }
     with _jobs_lock:
         _jobs[job_id] = job
@@ -578,10 +617,11 @@ def create_job(
             db.execute(
                 """INSERT OR IGNORE INTO training_jobs
                 (id, dataset_id, dataset_version, branch_id, task, model_type, seed,
-                 name, base_model_id, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 name, base_model_id, config, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (job_id, dataset_id, dataset_version, branch_id, task, model_type,
-                 seed, name, base_model_id, "pending", now),
+                 seed, name, base_model_id, orjson.dumps(config or {}).decode(),
+                 "pending", now),
             )
             db.commit()
         except Exception:
@@ -748,12 +788,13 @@ def run_job_background(
                 db.execute(
                     """UPDATE training_jobs
                     SET status = 'completed', completed_at = ?, model_id = ?,
-                        training_run_id = ?, metrics = ?
+                        training_run_id = ?, config = ?, metrics = ?
                     WHERE id = ?""",
                     (
                         completed_at,
                         result["model_id"],
                         result["run_id"],
+                        orjson.dumps(result.get("config") or {}).decode(),
                         orjson.dumps(result.get("metrics") or {}).decode(),
                         job_id,
                     ),

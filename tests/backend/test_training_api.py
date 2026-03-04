@@ -92,6 +92,19 @@ def api_client(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 
+class TestTrainingContract:
+    def test_contract_lists_xlm_roberta_parameters(self, api_client):
+        resp = api_client.get("/api/training/contract")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "xlm_roberta" in body["model_types"]
+        assert body["classification_loss"] == "cross_entropy"
+        pretrained_row = next(
+            row for row in body["parameters"] if row["name"] == "pretrained_model"
+        )
+        assert pretrained_row["applies_to"] == ["xlm_roberta"]
+
+
 class TestStartTraining:
     def test_start_returns_202(self, api_client):
         resp = api_client.post(
@@ -180,6 +193,34 @@ class TestStartTraining:
         body = resp.json()
         assert body["task"] == "language"
         assert body["name"] == "my_lang_model"
+
+    def test_start_accepts_xlm_roberta_config(self, api_client):
+        resp = api_client.post(
+            "/api/training/start",
+            json={
+                "dataset_id": api_client.dataset_id,
+                "task": "sentiment",
+                "model_type": "xlm_roberta",
+                "config": {
+                    "pretrained_model": "xlm-roberta-large",
+                    "max_seq_length": 384,
+                    "batch_size": 8,
+                    "epochs": 4,
+                    "learning_rate": 3e-5,
+                    "weight_decay": 0.05,
+                    "warmup_ratio": 0.1,
+                    "max_features": 5000,
+                },
+            },
+        )
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["model_type"] == "xlm_roberta"
+        assert body["config"]["loss"] == "cross_entropy"
+        assert body["config"]["pretrained_model"] == "xlm-roberta-large"
+        assert body["config"]["max_seq_length"] == 384
+        assert body["config"]["warmup_ratio"] == 0.1
+        assert "max_features" not in body["config"]
 
 
 class TestListTrainingJobs:

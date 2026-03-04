@@ -516,7 +516,7 @@ export default function NewAnalysisPage() {
                     width: "100%",
                     background: "var(--bg-elevated)",
                     border: "1px solid var(--border)",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-unified)",
                     padding: "7px 12px",
                     fontFamily: "var(--font-jetbrains)",
                     fontSize: "12px",
@@ -557,7 +557,7 @@ export default function NewAnalysisPage() {
                     width: "100%",
                     background: "var(--bg-elevated)",
                     border: "1px solid var(--border)",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-unified)",
                     padding: "7px 12px",
                     fontFamily: "var(--font-jetbrains)",
                     fontSize: "12px",
@@ -599,7 +599,7 @@ export default function NewAnalysisPage() {
                     width: "100%",
                     background: "var(--bg-elevated)",
                     border: "1px solid var(--border)",
-                    borderRadius: "6px",
+                    borderRadius: "var(--radius-unified)",
                     padding: "7px 12px",
                     fontFamily: "var(--font-jetbrains)",
                     fontSize: "12px",
@@ -627,7 +627,7 @@ export default function NewAnalysisPage() {
                 background: selectedDataset ? "var(--gold)" : "var(--border-dim)",
                 color: selectedDataset ? "#000" : "var(--text-tertiary)",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 fontWeight: 600,
                 cursor: selectedDataset ? "pointer" : "not-allowed",
@@ -676,7 +676,7 @@ export default function NewAnalysisPage() {
                       textAlign: "left",
                       padding: "14px 16px",
 	                      border: `1px solid ${selected ? "var(--gold)" : compatible ? "var(--border-dim)" : "var(--border)"}`,
-                      borderRadius: "8px",
+                      borderRadius: "var(--radius-unified)",
 	                      background: selected ? "var(--gold-faint)" : compatible ? "var(--bg-surface)" : "var(--bg-base)",
 	                      cursor: compatible ? "pointer" : "not-allowed",
 	                      opacity: compatible ? 1 : 0.6,
@@ -733,7 +733,7 @@ export default function NewAnalysisPage() {
               style={{
                 padding: "9px 16px",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 background: "transparent",
                 color: "var(--text-secondary)",
                 fontSize: "13px",
@@ -750,7 +750,7 @@ export default function NewAnalysisPage() {
                 background: selectedModelIds.length > 0 ? "var(--gold)" : "var(--border-dim)",
                 color: selectedModelIds.length > 0 ? "#000" : "var(--text-tertiary)",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 fontWeight: 600,
                 cursor: selectedModelIds.length > 0 ? "pointer" : "not-allowed",
@@ -774,7 +774,7 @@ export default function NewAnalysisPage() {
             style={{
               padding: "16px",
               border: "1px solid var(--border-dim)",
-              borderRadius: "8px",
+              borderRadius: "var(--radius-unified)",
               background: "var(--bg-surface)",
               marginBottom: "20px",
               fontSize: "13px",
@@ -821,7 +821,7 @@ export default function NewAnalysisPage() {
               <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "8px", fontFamily: "var(--font-jetbrains)", margin: "0 0 8px 0" }}>
                 For each column, select what it represents. Unneeded columns can be left as &quot;(not used)&quot;.
               </p>
-              <div style={{ border: "1px solid var(--border-dim)", borderRadius: "6px", overflow: "hidden" }}>
+              <div style={{ border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)", overflow: "hidden" }}>
                 {/* Header */}
                 <div className="flex" style={{ background: "var(--bg-base)", padding: "7px 12px", borderBottom: "1px solid var(--border-dim)", flexWrap: "wrap", gap: "4px 12px" }}>
                   <span style={{ flex: "1 1 12rem", fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "var(--font-syne)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -851,7 +851,7 @@ export default function NewAnalysisPage() {
                       <select
                         value={columnRoles[col] ?? ""}
                         onChange={(e) => setColumnRoles((prev) => ({ ...prev, [col]: e.target.value }))}
-                        style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--border-dim)", borderRadius: "4px", background: "var(--bg-base)", color: "var(--text-primary)", fontSize: "12px", fontFamily: "var(--font-jetbrains)" }}
+                        style={{ width: "100%", padding: "5px 8px", border: "1px solid var(--border-dim)", borderRadius: "var(--radius-unified)", background: "var(--bg-base)", color: "var(--text-primary)", fontSize: "12px", fontFamily: "var(--font-jetbrains)" }}
                       >
                         {SYSTEM_ROLES.map((r) => (
                           <option key={r.value} value={r.value}>{r.label}</option>
@@ -885,7 +885,7 @@ export default function NewAnalysisPage() {
                   width: "100%",
                   padding: "8px 12px",
                   border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                   color: "var(--text-primary)",
                   fontSize: "13px",
@@ -906,7 +906,7 @@ export default function NewAnalysisPage() {
                   width: "100%",
                   padding: "8px 12px",
                   border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                   color: "var(--text-primary)",
                   fontSize: "13px",
@@ -929,7 +929,7 @@ export default function NewAnalysisPage() {
                   width: "100%",
                   padding: "8px 12px",
                   border: "1px solid var(--border-dim)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   background: "var(--bg-surface)",
                   color: "var(--text-primary)",
                   fontSize: "13px",
@@ -943,7 +943,7 @@ export default function NewAnalysisPage() {
             <div
               style={{
                 padding: "10px 14px",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 background: "rgba(239,68,68,0.08)",
                 border: "1px solid rgba(239,68,68,0.3)",
                 color: "var(--error, #ef4444)",
@@ -961,7 +961,7 @@ export default function NewAnalysisPage() {
               style={{
                 padding: "9px 16px",
                 border: "1px solid var(--border-dim)",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 background: "transparent",
                 color: "var(--text-secondary)",
                 fontSize: "13px",
@@ -978,7 +978,7 @@ export default function NewAnalysisPage() {
                 background: launching ? "var(--border-dim)" : "var(--gold)",
                 color: launching ? "var(--text-tertiary)" : "#000",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "var(--radius-unified)",
                 fontSize: "13px",
                 fontWeight: 600,
                 cursor: launching ? "not-allowed" : "pointer",

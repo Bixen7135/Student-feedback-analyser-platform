@@ -9,11 +9,43 @@ import {
   updateModelMetadata,
   ModelSummary,
 } from "@/app/lib/api";
+import { formatLocalizedDateTime, useDateTimeLocale } from "@/app/lib/i18n/date-time";
 
 const TASK_COLORS: Record<string, string> = {
   language: "var(--teal)",
   sentiment: "var(--gold)",
   detail_level: "var(--running)",
+};
+
+const MODEL_TYPE_LABELS: Record<string, string> = {
+  tfidf: "TF-IDF",
+  char_ngram: "Char N-gram",
+  xlm_roberta: "XLM-RoBERTa",
+};
+
+const CONFIG_LABELS: Record<string, string> = {
+  loss: "Loss",
+  train_ratio: "Train ratio",
+  val_ratio: "Val ratio",
+  test_ratio: "Test ratio",
+  class_balancing: "Class balancing",
+  text_col: "Text column",
+  label_col: "Label column",
+  max_features: "Max features",
+  C: "Regularization (C)",
+  max_iter: "Max iterations",
+  pretrained_model: "Pretrained model",
+  max_seq_length: "Max sequence length",
+  batch_size: "Batch size",
+  epochs: "Epochs",
+  learning_rate: "Learning rate",
+  weight_decay: "Weight decay",
+  warmup_ratio: "Warmup ratio",
+  gradient_accumulation_steps: "Gradient accumulation",
+  head_hidden_units: "Head hidden units",
+  dropout: "Dropout",
+  activation: "Activation",
+  base_model_id: "Base model",
 };
 
 function renderModelSource(model: ModelSummary) {
@@ -44,6 +76,57 @@ function sourceBadgeLabel(model: ModelSummary): string | null {
   return "linked run";
 }
 
+function formatModelType(modelType: string): string {
+  return MODEL_TYPE_LABELS[modelType] ?? modelType;
+}
+
+function formatConfigValue(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function getConfigRows(model: ModelSummary): Array<[string, string]> {
+  const config = (model.config ?? {}) as Record<string, unknown>;
+  const keys = Object.keys(config);
+  if (keys.length === 0) return [];
+
+  const preferredOrder = [
+    "loss",
+    "train_ratio",
+    "val_ratio",
+    "test_ratio",
+    "class_balancing",
+    "text_col",
+    "label_col",
+    "max_features",
+    "C",
+    "max_iter",
+    "pretrained_model",
+    "max_seq_length",
+    "batch_size",
+    "epochs",
+    "learning_rate",
+    "weight_decay",
+    "warmup_ratio",
+    "gradient_accumulation_steps",
+    "head_hidden_units",
+    "dropout",
+    "activation",
+    "base_model_id",
+  ];
+
+  const orderedKeys = [
+    ...preferredOrder.filter((key) => key in config),
+    ...keys.filter((key) => !preferredOrder.includes(key)),
+  ];
+
+  return orderedKeys.map((key) => [
+    CONFIG_LABELS[key] ?? key,
+    formatConfigValue(config[key]),
+  ]);
+}
+
 export default function ModelDetailPage({
   params,
 }: {
@@ -51,6 +134,7 @@ export default function ModelDetailPage({
 }) {
   const { modelId } = use(params);
   const router = useRouter();
+  const dateTimeLocale = useDateTimeLocale();
   const [model, setModel] = useState<ModelSummary | null>(null);
   const [versions, setVersions] = useState<ModelSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +185,7 @@ export default function ModelDetailPage({
   }
 
   const btnBase = {
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "5px 12px",
     fontSize: "11px",
     fontFamily: "var(--font-jetbrains)",
@@ -112,7 +196,7 @@ export default function ModelDetailPage({
   const inputStyle = {
     background: "var(--bg-elevated)",
     border: "1px solid var(--border)",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-unified)",
     padding: "6px 10px",
     color: "var(--text-primary)",
     fontSize: "12px",
@@ -155,12 +239,13 @@ export default function ModelDetailPage({
   const producingRunHref =
     model.run_source === "pipeline" && model.run_id ? `/runs/${model.run_id}` : null;
   const lineageLabel = sourceBadgeLabel(model);
+  const configRows = getConfigRows(model);
 
   const tabStyle = (t: string) => ({
     background: tab === t ? "var(--bg-elevated)" : "transparent",
     border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
     borderBottom: tab === t ? "1px solid var(--bg-elevated)" : "1px solid transparent",
-    borderRadius: "6px 6px 0 0",
+    borderRadius: "var(--radius-unified) var(--radius-unified) 0 0",
     padding: "6px 14px",
     color: tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
     fontSize: "11px",
@@ -231,7 +316,7 @@ export default function ModelDetailPage({
                   background: "var(--gold)",
                   color: "#08080B",
                   border: "none",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-unified)",
                   padding: "5px 14px",
                   fontSize: "11px",
                   fontWeight: 600,
@@ -301,7 +386,7 @@ export default function ModelDetailPage({
                     fontFamily: "var(--font-jetbrains)",
                   }}
                 >
-                  {model.model_type}
+                  {formatModelType(model.model_type)}
                 </span>
                 {lineageLabel && (
                   <span
@@ -364,7 +449,7 @@ export default function ModelDetailPage({
               }}
             >
               <span>v{model.version}</span>
-              <span>{new Date(model.created_at).toLocaleString()}</span>
+              <span>{formatLocalizedDateTime(model.created_at, dateTimeLocale)}</span>
               {model.run_id && (
                 <span style={{ overflowWrap: "anywhere" }}>
                   {renderModelSource(model)}
@@ -458,19 +543,84 @@ export default function ModelDetailPage({
             padding: "16px 20px",
           }}
         >
-          <pre
-            style={{
-              fontFamily: "var(--font-jetbrains)",
-              fontSize: "11px",
-              color: "var(--text-secondary)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              overflowWrap: "anywhere",
-              margin: 0,
-            }}
-          >
-            {JSON.stringify(model.config, null, 2)}
-          </pre>
+          {configRows.length === 0 ? (
+            <div
+              style={{
+                color: "var(--text-tertiary)",
+                fontFamily: "var(--font-jetbrains)",
+                fontSize: "12px",
+              }}
+            >
+              No config available.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {configRows.map(([key, value]) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-3"
+                  style={{ flexWrap: "wrap" }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-jetbrains)",
+                      fontSize: "11px",
+                      color: "var(--text-secondary)",
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {key}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-jetbrains)",
+                      fontSize: "11px",
+                      color: "var(--text-primary)",
+                      overflowWrap: "anywhere",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {value}
+                  </span>
+                </div>
+              ))}
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  paddingTop: "10px",
+                  borderTop: "1px solid var(--border-dim)",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "var(--font-syne)",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "var(--text-tertiary)",
+                    marginBottom: "8px",
+                  }}
+                >
+                  Raw JSON
+                </div>
+                <pre
+                  style={{
+                    fontFamily: "var(--font-jetbrains)",
+                    fontSize: "11px",
+                    color: "var(--text-secondary)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "anywhere",
+                    margin: 0,
+                  }}
+                >
+                  {JSON.stringify(model.config, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -519,7 +669,7 @@ export default function ModelDetailPage({
                     color: "var(--text-tertiary)",
                   }}
                 >
-                  {new Date(v.created_at).toLocaleString()}
+                  {formatLocalizedDateTime(v.created_at, dateTimeLocale)}
                 </span>
               </div>
             </div>

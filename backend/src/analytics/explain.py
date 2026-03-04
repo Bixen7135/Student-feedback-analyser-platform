@@ -10,6 +10,7 @@ from src.analytics.feature_importance import load_linear_text_components
 from src.inference.signature import canonicalize_signature
 from src.preprocessing.spec import DEFAULT_PREPROCESS_SPEC, apply_preprocess
 from src.storage.models import ModelMeta
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 
 
 def explain_text_instance(
@@ -18,6 +19,9 @@ def explain_text_instance(
     top_n: int = 10,
 ) -> dict[str, Any]:
     """Return top contributing features for a single text input."""
+    if model_meta.model_type == MODEL_TYPE_XLM_ROBERTA:
+        raise ValueError("Local explanations are not supported for xlm_roberta models.")
+
     components = load_linear_text_components(model_meta)
     pipeline = components["pipeline"]
     vectorizer = components["vectorizer"]

@@ -100,7 +100,7 @@ export default function PsychometricsPage({ params }: Props) {
         style={{
           background: "var(--gold-faint)",
           borderLeft: "3px solid var(--gold-muted)",
-          borderRadius: "0 6px 6px 0",
+          borderRadius: "0 var(--radius-unified) var(--radius-unified) 0",
           padding: "9px 14px",
           fontSize: "11px",
           color: "var(--text-secondary)",
@@ -128,7 +128,7 @@ export default function PsychometricsPage({ params }: Props) {
             style={{
               background: "var(--bg-elevated)",
               border: "1px solid var(--border)",
-              borderRadius: "6px",
+              borderRadius: "var(--radius-unified)",
               padding: "6px 12px",
               fontFamily: "var(--font-jetbrains)",
               fontSize: "11px",

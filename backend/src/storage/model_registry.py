@@ -20,6 +20,23 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def resolve_model_artifact_path(storage_path: Path | str) -> Path:
+    """Resolve the canonical artifact path within a registry version directory."""
+    version_dir = Path(storage_path)
+    file_path = version_dir / "model.joblib"
+    if file_path.exists():
+        return file_path
+
+    dir_path = version_dir / "model"
+    if dir_path.is_dir():
+        return dir_path
+
+    raise FileNotFoundError(
+        f"Model artifact not found in {version_dir}. "
+        "Expected either 'model.joblib' or 'model/'."
+    )
+
+
 class ModelRegistry:
     """Manages trained model storage and metadata."""
 
@@ -72,8 +89,14 @@ class ModelRegistry:
         version_dir = self.models_dir / model_id / f"v{version}"
         version_dir.mkdir(parents=True, exist_ok=True)
 
-        model_dest = version_dir / "model.joblib"
-        shutil.copy2(source_model_path, model_dest)
+        if source_model_path.is_file():
+            model_dest = version_dir / "model.joblib"
+            shutil.copy2(source_model_path, model_dest)
+        elif source_model_path.is_dir():
+            model_dest = version_dir / "model"
+            shutil.copytree(source_model_path, model_dest)
+        else:
+            raise FileNotFoundError(f"Model artifact not found: {source_model_path}")
 
         if source_metrics_path and source_metrics_path.exists():
             shutil.copy2(source_metrics_path, version_dir / "metrics.json")
@@ -231,14 +254,11 @@ class ModelRegistry:
         return [self._row_to_model(r) for r in rows]
 
     def load_model_artifact(self, model_id: str) -> Path:
-        """Get the path to a model's joblib file."""
+        """Get the path to a model artifact file or directory."""
         model = self.get_model(model_id)
         if model is None:
             raise ValueError(f"Model not found: {model_id}")
-        model_path = Path(model.storage_path) / "model.joblib"
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model artifact not found: {model_path}")
-        return model_path
+        return resolve_model_artifact_path(model.storage_path)
 
     # ------------------------------------------------------------------
     # Mutations

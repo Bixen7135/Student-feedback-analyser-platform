@@ -16,6 +16,12 @@ from src.api.schemas import (
     RunSummaryResponse,
     StageStatusResponse,
 )
+from src.text_tasks.xlm_roberta_classifier import (
+    XlmRobertaDependencyError,
+    ensure_xlm_roberta_runtime_available,
+)
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
+from src.training.config import TrainingConfig
 from src.utils.run_manager import RunManager
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -110,6 +116,7 @@ def _run_to_summary(meta: dict, produced_models_count: int = 0) -> RunSummaryRes
         branch_id=meta.get("branch_id"),
         dataset_version=meta.get("dataset_version"),
         name=meta.get("name"),
+        pipeline_training=meta.get("pipeline_training"),
         produced_models_count=produced_models_count,
     )
 
@@ -151,6 +158,19 @@ async def create_run(
     from src.config import get_system_info
     from src.utils.reproducibility import hash_file
 
+    pipeline_training: dict | None = None
+    if request.pipeline_training is not None:
+        try:
+            pipeline_config = TrainingConfig(**(request.pipeline_training.config or {}))
+            pipeline_training = {
+                "model_type": request.pipeline_training.model_type,
+                "config": pipeline_config.to_dict(
+                    model_type=request.pipeline_training.model_type
+                ),
+            }
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     config_path = Path(request.config_path) if request.config_path else _DEFAULT_CONFIG_PATH
     config_hash = hash_file(config_path)[:16] if config_path.exists() else "unknown"
 
@@ -179,6 +199,7 @@ async def create_run(
         dataset_version=request.dataset_version,
         branch_id=request.branch_id,
         name=request.name,
+        pipeline_training=pipeline_training,
         db=db,
     )
     meta = mgr.load_run(run_id)
@@ -226,6 +247,13 @@ async def start_stage(
 
     # For run_full, launch in background
     if stage_name == "run_full":
+        meta = mgr.load_run(run_id)
+        pipeline_training = meta.get("pipeline_training") or {}
+        if pipeline_training.get("model_type") == MODEL_TYPE_XLM_ROBERTA:
+            try:
+                ensure_xlm_roberta_runtime_available()
+            except XlmRobertaDependencyError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
         background_tasks.add_task(_run_full_background, run_id, mgr, db, model_registry)
         return {"status": "started", "run_id": run_id, "stage": stage_name}
 
@@ -279,6 +307,7 @@ def _run_full_background(run_id: str, mgr: RunManager, db, model_registry) -> No
         dataset_id      = meta.get("dataset_id")
         dataset_version = meta.get("dataset_version")
         branch_id       = meta.get("branch_id")
+        pipeline_training = meta.get("pipeline_training")
 
         if dataset_id:
             # Load DF from the versioned dataset store
@@ -295,6 +324,8 @@ def _run_full_background(run_id: str, mgr: RunManager, db, model_registry) -> No
                 dataset_id=dataset_id,
                 dataset_version=dataset_version,
                 branch_id=branch_id,
+                dataset_manager=dm,
+                pipeline_training=pipeline_training,
                 model_registry=model_registry,
                 db=db,
             )
@@ -307,6 +338,7 @@ def _run_full_background(run_id: str, mgr: RunManager, db, model_registry) -> No
                 runs_dir=mgr.runs_dir,
                 seed=seed,
                 existing_run_id=run_id,
+                pipeline_training=pipeline_training,
                 model_registry=model_registry,
                 db=db,
             )

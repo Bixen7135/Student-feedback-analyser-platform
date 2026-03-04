@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class StageStatusResponse(BaseModel):
@@ -13,6 +13,11 @@ class StageStatusResponse(BaseModel):
     completed_at: str | None = None
     duration_seconds: float | None = None
     error: str | None = None
+
+
+class PipelineTrainingRequest(BaseModel):
+    model_type: str = Field(..., pattern="^(tfidf|char_ngram|xlm_roberta)$")
+    config: dict[str, Any] | None = None
 
 
 class RunSummaryResponse(BaseModel):
@@ -26,6 +31,7 @@ class RunSummaryResponse(BaseModel):
     branch_id: str | None = None
     dataset_version: int | None = None
     name: str | None = None
+    pipeline_training: PipelineTrainingRequest | None = None
     produced_models_count: int = 0
 
 
@@ -54,6 +60,7 @@ class CreateRunRequest(BaseModel):
     branch_id: str | None = None
     dataset_version: int | None = None
     name: str | None = None
+    pipeline_training: PipelineTrainingRequest | None = None
 
 
 class StartStageRequest(BaseModel):

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -15,7 +17,9 @@ if str(BACKEND_DIR) not in sys.path:
 from src.storage.database import Database
 from src.storage.dataset_manager import DatasetManager
 from src.storage.model_registry import ModelRegistry
+from src.text_tasks.xlm_roberta_classifier import XlmRobertaClassifier
 from src.training.config import TrainingConfig
+from src.training.contract import MODEL_TYPE_XLM_ROBERTA
 from src.training.runner import (
     LabelValidationError,
     _detect_text_col,
@@ -23,6 +27,129 @@ from src.training.runner import (
     _apply_class_balancing,
     run_training,
 )
+
+
+# ---------------------------------------------------------------------------
+# Test doubles
+# ---------------------------------------------------------------------------
+
+
+class _FakeTokenizer:
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def save_pretrained(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "tokenizer.txt").write_text(self.source, encoding="utf-8")
+
+
+class _FakeEncoderConfig:
+    hidden_size = 8
+
+
+class _FakeEncoder:
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.config = _FakeEncoderConfig()
+
+    def save_pretrained(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "encoder.txt").write_text(self.source, encoding="utf-8")
+
+
+class _FakeNetwork:
+    def __init__(self, encoder: _FakeEncoder, num_labels: int) -> None:
+        self.encoder = encoder
+        self.classifier = self
+        self.num_labels = num_labels
+        self.class_bias = np.zeros(num_labels, dtype=float)
+
+    def state_dict(self) -> dict[str, list[float]]:
+        return {"class_bias": self.class_bias.tolist()}
+
+    def load_state_dict(self, state: dict[str, list[float]]) -> None:
+        self.class_bias = np.array(state["class_bias"], dtype=float)
+
+
+class _FakeXlmBackend:
+    def create_tokenizer(self, source: str) -> _FakeTokenizer:
+        return _FakeTokenizer(source)
+
+    def create_encoder(self, source: str) -> _FakeEncoder:
+        return _FakeEncoder(source)
+
+    def build_network(
+        self,
+        *,
+        encoder: _FakeEncoder,
+        num_labels: int,
+        head_hidden_units: int | None,
+        dropout: float,
+        activation: str,
+    ) -> _FakeNetwork:
+        return _FakeNetwork(encoder, num_labels)
+
+    def train(
+        self,
+        *,
+        network: _FakeNetwork,
+        tokenizer: _FakeTokenizer,
+        texts: list[str],
+        label_ids: list[int],
+        max_seq_length: int,
+        batch_size: int,
+        epochs: int,
+        learning_rate: float,
+        weight_decay: float,
+        warmup_ratio: float | None,
+        gradient_accumulation_steps: int | None,
+        seed: int,
+    ) -> None:
+        totals = np.zeros(network.num_labels, dtype=float)
+        counts = np.zeros(network.num_labels, dtype=float)
+        for text, label_id in zip(texts, label_ids, strict=False):
+            totals[int(label_id)] += float(len(text))
+            counts[int(label_id)] += 1.0
+        network.class_bias = totals / np.maximum(counts, 1.0)
+
+    def predict_logits(
+        self,
+        *,
+        network: _FakeNetwork,
+        tokenizer: _FakeTokenizer,
+        texts: list[str],
+        max_seq_length: int,
+        batch_size: int,
+    ) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, 0), dtype=float)
+        scale = np.linspace(0.01, 0.05, network.num_labels)
+        return np.vstack([
+            network.class_bias + (len(text) * scale)
+            for text in texts
+        ])
+
+    def save_pretrained(
+        self,
+        *,
+        network: _FakeNetwork,
+        tokenizer: _FakeTokenizer,
+        path: Path,
+    ) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        network.encoder.save_pretrained(path / "encoder")
+        tokenizer.save_pretrained(path / "tokenizer")
+        (path / "head.pt").write_text(
+            json.dumps(network.state_dict()),
+            encoding="utf-8",
+        )
+
+    def load_weights(self, *, network: _FakeNetwork, path: Path) -> None:
+        payload = json.loads((path / "head.pt").read_text(encoding="utf-8"))
+        network.load_state_dict(payload)
+
+    def copy_state(self, *, source: _FakeNetwork, target: _FakeNetwork) -> None:
+        target.load_state_dict(source.state_dict())
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +346,34 @@ class TestTrainingConfig:
         assert d["max_features"] == 1000
         assert d["label_col"] is None
 
+    def test_to_dict_filters_to_baseline_contract(self):
+        cfg = TrainingConfig(
+            C=0.5,
+            max_features=1000,
+            pretrained_model="custom-model",
+        )
+        d = cfg.to_dict(model_type="tfidf")
+        assert d["loss"] == "cross_entropy"
+        assert d["C"] == 0.5
+        assert d["max_features"] == 1000
+        assert "pretrained_model" not in d
+
+    def test_to_dict_filters_to_transformer_contract(self):
+        cfg = TrainingConfig(
+            max_features=5000,
+            C=0.5,
+            warmup_ratio=0.1,
+            dropout=0.2,
+        )
+        d = cfg.to_dict(model_type=MODEL_TYPE_XLM_ROBERTA)
+        assert d["loss"] == "cross_entropy"
+        assert d["pretrained_model"] == "xlm-roberta-base"
+        assert d["max_seq_length"] == 256
+        assert d["warmup_ratio"] == 0.1
+        assert d["dropout"] == 0.2
+        assert "max_features" not in d
+        assert "C" not in d
+
 
 # ---------------------------------------------------------------------------
 # run_training — full integration
@@ -378,6 +533,100 @@ class TestRunTraining:
             seed=42,
         )
         assert result["config"]["class_balancing"] == "oversample"
+
+    def test_trains_xlm_roberta_and_registers(self, uploaded_dataset, tmp_dirs, monkeypatch):
+        dm, reg, arts = tmp_dirs
+        monkeypatch.setattr(
+            XlmRobertaClassifier,
+            "_backend_factory",
+            staticmethod(lambda: _FakeXlmBackend()),
+        )
+        cfg = TrainingConfig(
+            pretrained_model="xlm-roberta-base",
+            max_seq_length=64,
+            batch_size=4,
+            epochs=1,
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            head_hidden_units=16,
+            dropout=0.2,
+            activation="relu",
+        )
+
+        result = run_training(
+            dataset_id=uploaded_dataset,
+            task="sentiment",
+            model_type=MODEL_TYPE_XLM_ROBERTA,
+            dataset_manager=dm,
+            model_registry=reg,
+            artifacts_dir=arts,
+            config=cfg,
+            seed=42,
+        )
+
+        assert result["model_id"] is not None
+        assert result["metrics"]["model_type"] == MODEL_TYPE_XLM_ROBERTA
+        assert result["config"]["pretrained_model"] == "xlm-roberta-base"
+        assert result["config"]["head_hidden_units"] == 16
+
+        model = reg.get_model(result["model_id"])
+        assert model is not None
+        assert model.model_type == MODEL_TYPE_XLM_ROBERTA
+        assert model.config["pretrained_model"] == "xlm-roberta-base"
+
+        artifact_path = reg.load_model_artifact(result["model_id"])
+        assert artifact_path.is_dir()
+        assert (artifact_path / "metadata.json").exists()
+
+        loaded = XlmRobertaClassifier.load(artifact_path)
+        preds = loaded.predict(["short text", "a somewhat longer text"])
+        assert len(preds) == 2
+        assert loaded.classes_ == model.metrics["classes"]
+
+    def test_fine_tunes_xlm_roberta_from_registry(self, uploaded_dataset, tmp_dirs, monkeypatch):
+        dm, reg, arts = tmp_dirs
+        monkeypatch.setattr(
+            XlmRobertaClassifier,
+            "_backend_factory",
+            staticmethod(lambda: _FakeXlmBackend()),
+        )
+        cfg = TrainingConfig(
+            pretrained_model="xlm-roberta-base",
+            max_seq_length=64,
+            batch_size=4,
+            epochs=1,
+            learning_rate=1e-3,
+            weight_decay=0.0,
+            head_hidden_units=8,
+        )
+
+        base_result = run_training(
+            dataset_id=uploaded_dataset,
+            task="sentiment",
+            model_type=MODEL_TYPE_XLM_ROBERTA,
+            dataset_manager=dm,
+            model_registry=reg,
+            artifacts_dir=arts,
+            config=cfg,
+            seed=7,
+        )
+        fine_tuned = run_training(
+            dataset_id=uploaded_dataset,
+            task="sentiment",
+            model_type=MODEL_TYPE_XLM_ROBERTA,
+            dataset_manager=dm,
+            model_registry=reg,
+            artifacts_dir=arts,
+            config=cfg,
+            base_model_id=base_result["model_id"],
+            seed=8,
+        )
+
+        assert fine_tuned["model_version"] == base_result["model_version"] + 1
+        fine_tuning = fine_tuned["metrics"].get("fine_tuning")
+        assert fine_tuning is not None
+        assert fine_tuning["base_model_id"] == base_result["model_id"]
+        assert fine_tuning["warm_started"] is True
 
     def test_version_auto_increments_in_registry(self, uploaded_dataset, tmp_dirs):
         """Training twice on the same dataset+task+type should produce v1 then v2."""

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 interface FileUploadProps {
   accept?: string;
@@ -9,6 +10,7 @@ interface FileUploadProps {
 }
 
 export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProps) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -51,6 +53,7 @@ export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProp
       <input
         ref={inputRef}
         type="file"
+        aria-label={t("Choose file")}
         accept={accept}
         onChange={handleChange}
         style={{ display: "none" }}
@@ -80,8 +83,8 @@ export function FileUpload({ accept = ".csv", onFile, disabled }: FileUploadProp
         <div className="ui-dropzone__name">{fileName}</div>
       ) : (
         <>
-          <div className="ui-dropzone__title">Drop CSV file here</div>
-          <div className="ui-dropzone__hint">or click to browse</div>
+          <div className="ui-dropzone__title">{t("Drop CSV file here")}</div>
+          <div className="ui-dropzone__hint">{t("or click to browse")}</div>
         </>
       )}
     </div>

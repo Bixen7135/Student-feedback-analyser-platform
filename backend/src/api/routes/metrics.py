@@ -74,8 +74,15 @@ async def get_classification_metrics(
     rdir = mgr.get_run_dir(run_id)
     results = []
 
-    for model_type in ["tfidf", "char_ngram"]:
-        metrics_path = rdir / "text_tasks" / task_name / model_type / "metrics.json"
+    task_dir = rdir / "text_tasks" / task_name
+    if not task_dir.exists():
+        raise HTTPException(404, f"No classification metrics found for task {task_name}")
+
+    for model_dir in sorted(task_dir.iterdir()):
+        if not model_dir.is_dir():
+            continue
+        model_type = model_dir.name
+        metrics_path = model_dir / "metrics.json"
         if not metrics_path.exists():
             continue
         data = orjson.loads(metrics_path.read_bytes())
