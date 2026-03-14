@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import type { HistogramBin, NumericRange } from "@/app/components/charts/types";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 export function Histogram({
   bins,
@@ -15,6 +16,7 @@ export function Histogram({
   onRangeSelect?: (range: NumericRange) => void;
   valueFormatter?: (value: number) => string;
 }) {
+  const { t } = useI18n();
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [dragEnd, setDragEnd] = useState<number | null>(null);
 
@@ -44,7 +46,7 @@ export function Histogram({
   if (bins.length === 0) {
     return (
       <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-        No numeric data available.
+        {t("No numeric data available.")}
       </div>
     );
   }
@@ -142,7 +144,7 @@ export function Histogram({
             color: "var(--text-tertiary)",
           }}
         >
-          Click a bin or drag across multiple bins to filter this range.
+          {t("Click a bin or drag across multiple bins to filter this range.")}
         </p>
       )}
     </div>

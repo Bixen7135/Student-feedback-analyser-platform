@@ -1,6 +1,7 @@
 "use client";
 
 import type { CategoricalDatum } from "@/app/components/charts/types";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 export function BarListChart({
   title,
@@ -15,6 +16,7 @@ export function BarListChart({
   onSelect?: (label: string) => void;
   maxItems?: number;
 }) {
+  const { t } = useI18n();
   const entries = [...series]
     .sort((a, b) => b.value - a.value)
     .slice(0, maxItems);
@@ -23,7 +25,7 @@ export function BarListChart({
   if (entries.length === 0) {
     return (
       <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-        No data available.
+        {t("No data available.")}
       </div>
     );
   }
@@ -75,7 +77,7 @@ export function BarListChart({
                   whiteSpace: "nowrap",
                 }}
               >
-                {entry.label || "(empty)"}
+                {entry.label || t("(empty)")}
               </span>
               <span
                 style={{

@@ -15,6 +15,7 @@ import {
   buildNumericSections,
   buildTextLengthSections,
 } from "@/app/lib/analytics";
+import { useI18n } from "@/app/lib/i18n/provider";
 import { BarListChart } from "@/app/components/charts/BarListChart";
 import { ChartCard } from "@/app/components/charts/ChartCard";
 import { Heatmap } from "@/app/components/charts/Heatmap";
@@ -26,9 +27,11 @@ export default function DatasetAnalyticsPage({
   params: Promise<{ datasetId: string }>;
 }) {
   const { datasetId } = use(params);
+  const { locale, t } = useI18n();
   const [descriptive, setDescriptive] = useState<DatasetDescriptiveAnalytics | null>(null);
   const [correlations, setCorrelations] = useState<DatasetCorrelationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const numberFormatter = new Intl.NumberFormat(locale);
 
   useEffect(() => {
     let active = true;
@@ -59,21 +62,21 @@ export default function DatasetAnalyticsPage({
     <div className="page-shell page-standard page-shell--xl animate-fade-up">
       <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "14px" }}>
         <Link href="/datasets" style={{ color: "inherit", textDecoration: "none" }}>
-          Datasets
+          {t("Datasets")}
         </Link>
         {" / "}
         <Link href={`/datasets/${datasetId}`} style={{ color: "inherit", textDecoration: "none" }}>
           {datasetId}
         </Link>
         {" / "}
-        <span style={{ color: "var(--text-secondary)" }}>Analytics</span>
+        <span style={{ color: "var(--text-secondary)" }}>{t("Analytics")}</span>
       </div>
 
       <h1 style={{ margin: 0, fontFamily: "var(--font-syne)", fontSize: "24px", color: "var(--text-primary)" }}>
-        Dataset Analytics
+        {t("Dataset Analytics")}
       </h1>
       <p style={{ margin: "6px 0 18px", fontSize: "12px", color: "var(--text-tertiary)" }}>
-        Descriptive statistics and associations for the current dataset snapshot.
+        {t("Descriptive statistics and associations for the current dataset snapshot.")}
       </p>
 
       {error && (
@@ -85,7 +88,12 @@ export default function DatasetAnalyticsPage({
       {categoricalSections.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px", marginBottom: "16px" }}>
           {categoricalSections.map((section) => (
-            <ChartCard key={section.column} title={section.column} subtitle={`${section.count.toLocaleString()} non-empty rows`}>
+            <ChartCard
+              key={section.column}
+              title={section.column}
+              subtitle={`${numberFormatter.format(section.count)} ${t("non-empty rows")}`}
+              skipAutoI18n
+            >
               <BarListChart series={section.series} />
             </ChartCard>
           ))}
@@ -95,12 +103,22 @@ export default function DatasetAnalyticsPage({
       {(textSections.length > 0 || numericSections.length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "16px", marginBottom: "16px" }}>
           {textSections.map((section) => (
-            <ChartCard key={`text-${section.column}`} title={`${section.column} text length`} subtitle="Quartile-derived distribution bins.">
+            <ChartCard
+              key={`text-${section.column}`}
+              title={`${section.column} ${t("text length")}`}
+              subtitle={t("Quartile-derived distribution bins.")}
+              skipAutoI18n
+            >
               <Histogram bins={section.charBins} />
             </ChartCard>
           ))}
           {numericSections.map((section) => (
-            <ChartCard key={`num-${section.column}`} title={`${section.column} distribution`} subtitle="Quartile-derived distribution bins.">
+            <ChartCard
+              key={`num-${section.column}`}
+              title={`${section.column} ${t("distribution")}`}
+              subtitle={t("Quartile-derived distribution bins.")}
+              skipAutoI18n
+            >
               <Histogram bins={section.bins} />
             </ChartCard>
           ))}
@@ -108,7 +126,11 @@ export default function DatasetAnalyticsPage({
       )}
 
       {correlationCells.length > 0 && (
-        <ChartCard title="Correlation Heatmap" subtitle="Mixed-type pairwise associations within the dataset.">
+        <ChartCard
+          title={t("Correlation Heatmap")}
+          subtitle={t("Mixed-type pairwise associations within the dataset.")}
+          skipAutoI18n
+        >
           <Heatmap cells={correlationCells} />
         </ChartCard>
       )}

@@ -5,14 +5,17 @@ export function ChartCard({
   subtitle,
   children,
   actions,
+  skipAutoI18n = false,
 }: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  skipAutoI18n?: boolean;
 }) {
   return (
     <section
+      data-i18n-skip={skipAutoI18n ? true : undefined}
       style={{
         padding: "clamp(16px, 2vw, 20px)",
         borderRadius: "var(--radius-unified)",

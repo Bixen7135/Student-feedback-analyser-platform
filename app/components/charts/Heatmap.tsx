@@ -1,6 +1,7 @@
 "use client";
 
 import type { HeatmapCell } from "@/app/components/charts/types";
+import { useI18n } from "@/app/lib/i18n/provider";
 
 export function Heatmap({
   cells,
@@ -9,10 +10,11 @@ export function Heatmap({
   cells: HeatmapCell[];
   onSelect?: (cell: HeatmapCell) => void;
 }) {
+  const { t } = useI18n();
   if (cells.length === 0) {
     return (
       <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-        No matrix data available.
+        {t("No matrix data available.")}
       </div>
     );
   }
@@ -74,7 +76,7 @@ export function Heatmap({
                   key={`${xLabel}-${yLabel}`}
                   type="button"
                   onClick={() => onSelect?.(cell)}
-                  title={cell.label ?? `${yLabel} / ${xLabel}: ${cell.value.toFixed(3)}`}
+                  title={t(cell.label ?? `${yLabel} / ${xLabel}: ${cell.value.toFixed(3)}`)}
                   style={{
                     minHeight: "44px",
                     borderRadius: "var(--radius-unified)",
